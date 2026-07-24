@@ -1,0 +1,42 @@
+{
+    "name": "ByteDance.PICO.CameraPack",
+    "rootNamespace": "",
+    "references": [
+        "Unity.XR.PICO.Editor",
+        "Unity.XR.PICO",
+        "PICO.TobSupport",
+        "ByteDance.PICO.XR",
+        "ByteDance.PICO.Enterprise",
+        "Unity.InferenceEngine"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.ai.inference",
+            "expression": "",
+            "define": "UNITY_AI_INFERENCE"
+        },
+        {
+            "name": "com.unity.xr.management",
+            "expression": "",
+            "define": "USING_XR_MANAGEMENT"
+        },
+        {
+            "name": "com.bytedance.pico.xr",
+            "expression": "",
+            "define": "PICO_XR_NEW"
+        },
+        {
+            "name": "com.unity.xr.picoxr",
+            "expression": "",
+            "define": "PICO_XR_3"
+        }
+    ],
+    "noEngineReferences": false
+}

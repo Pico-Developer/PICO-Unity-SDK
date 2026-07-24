@@ -1,0 +1,54 @@
+{
+    "name": "SpatialAdapter",
+    "maps": [
+        {
+            "name": "Spatial",
+            "id": "afbebd86-6148-4397-9049-1646304248f3",
+            "actions": [
+                {
+                    "name": "Primary Touch",
+                    "type": "PassThrough",
+                    "id": "49e314d1-98a9-45fb-ac78-6ad90a14c4b0",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Secondary Touch",
+                    "type": "Button",
+                    "id": "4d8176ea-f63c-4939-a6bc-94d552342cce",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "2a910367-81f2-41c0-90fd-d52e0a8a14f8",
+                    "path": "<SpatialInputDevice>/primary",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Primary Touch",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "4294fb91-9832-4735-b438-0193b0e258bd",
+                    "path": "<SpatialInputDevice>/secondary",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Secondary Touch",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}

@@ -1,0 +1,21 @@
+﻿{
+    "name": "ByteDance.PICO.SpatialAdapter.Editor",
+    "rootNamespace": "",
+    "references": [
+        "ByteDance.PICO.SpatialAdapter.Runtime",
+        "Unity.InputSystem",
+        "Unity.XR.CoreUtils",
+        "Unity.XR.CoreUtils.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

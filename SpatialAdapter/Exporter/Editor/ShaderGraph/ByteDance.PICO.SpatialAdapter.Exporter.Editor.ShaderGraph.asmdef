@@ -1,0 +1,18 @@
+{
+    "name": "Unity.XR.Quantum.Editor.ShaderGraph",
+    "rootNamespace": "",
+    "references": [
+        "Unity.ShaderGraph.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

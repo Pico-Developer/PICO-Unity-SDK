@@ -1,0 +1,27 @@
+﻿{
+    "name": "ByteDance.PICO.SpatialAdapter.Exporter.Editor",
+    "rootNamespace": "",
+    "references": [
+        "PlattarCompile",
+        "Compiler",
+        "Unity.Formats.USD.Runtime",
+        "USD.NET",
+        "ByteDance.PICO.SpatialAdapter.Exporter",
+        "ByteDance.PICO.SpatialAdapter.Runtime",
+        "ByteDance.PICO.SpatialAdapter.Editor",
+        "Unity.XR.Quantum.Editor.ShaderGraph",
+        "Unity.ShaderGraph.Editor",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

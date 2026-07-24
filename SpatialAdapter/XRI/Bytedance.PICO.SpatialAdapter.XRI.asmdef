@@ -1,0 +1,34 @@
+{
+    "name": "Bytedance.PICO.SpatialAdapter.XRI",
+    "rootNamespace": "",
+    "references": [
+        "Unity.InputSystem",
+        "Unity.XR.Interaction.Toolkit",
+        "ByteDance.PICO.SpatialAdapter.Runtime"
+    ],
+    "includePlatforms": [
+        "Android",
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNITY_INCLUDE_XRI"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.xr.interaction.toolkit",
+            "expression": "2.5.4",
+            "define": "UNITY_INCLUDE_XRI"
+        },
+        {
+            "name": "com.unity.xr.interaction.toolkit",
+            "expression": "3.0.0",
+            "define": "UNITY_INCLUDE_XRI_3_0"
+        }
+    ],
+    "noEngineReferences": false
+}
