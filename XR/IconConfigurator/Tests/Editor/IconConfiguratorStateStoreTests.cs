@@ -103,6 +103,51 @@ namespace ByteDance.PICO.IconConfigurator.Editor.Tests
         }
 
         [Test]
+        public void ConfigNormalizer_WhenManualHasTrailingEmptyThirdLayer_TrimsBackToTwoLayers()
+        {
+            IconConfiguratorConfigAsset config = ScriptableObject.CreateInstance<IconConfiguratorConfigAsset>();
+            config.Manual = new ManualLayerState
+            {
+                Layers = new System.Collections.Generic.List<IconLayerConfig>
+                {
+                    new IconLayerConfig { LayerKind = IconLayerKind.Background, DisplayName = "Background" },
+                    new IconLayerConfig { LayerKind = IconLayerKind.Foreground1, DisplayName = "Foreground1" },
+                    new IconLayerConfig { LayerKind = IconLayerKind.Foreground2, DisplayName = "Foreground2" },
+                },
+            };
+
+            IconConfiguratorConfigNormalizer.Normalize(config);
+
+            Assert.That(config.Manual.Layers, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void ConfigNormalizer_WhenThirdLayerHasImportedAsset_KeepsThreeLayers()
+        {
+            IconConfiguratorConfigAsset config = ScriptableObject.CreateInstance<IconConfiguratorConfigAsset>();
+            config.Manual = new ManualLayerState
+            {
+                Layers = new System.Collections.Generic.List<IconLayerConfig>
+                {
+                    new IconLayerConfig { LayerKind = IconLayerKind.Background, DisplayName = "Background" },
+                    new IconLayerConfig { LayerKind = IconLayerKind.Foreground1, DisplayName = "Foreground1" },
+                    new IconLayerConfig
+                    {
+                        LayerKind = IconLayerKind.Foreground2,
+                        DisplayName = "Foreground2",
+                        AssetGuid = "guid",
+                        AssetPath = "Assets/IconConfigurator/Imported/foreground2.png",
+                    },
+                },
+            };
+
+            IconConfiguratorConfigNormalizer.Normalize(config);
+
+            Assert.That(config.Manual.Layers, Has.Count.EqualTo(3));
+            Assert.That(config.Manual.Layers[2].LayerKind, Is.EqualTo(IconLayerKind.Foreground2));
+        }
+
+        [Test]
         public void LoadOrCreateConfigAsset_WhenCreated_HasValidMonoScript()
         {
             IconConfiguratorStateStore stateStore = new IconConfiguratorStateStore();

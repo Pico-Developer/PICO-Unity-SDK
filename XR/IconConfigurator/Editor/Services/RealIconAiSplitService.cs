@@ -889,7 +889,8 @@ namespace ByteDance.PICO.IconConfigurator.Editor
 
             if (layerDtos.Length < ManualLayerState.MinLayerCount || layerDtos.Length > ManualLayerState.MaxLayerCount)
             {
-                throw new InvalidOperationException("AI Split result must contain between 2 and 5 layer/sdf pairs.");
+                throw new InvalidOperationException(
+                    $"AI Split result must contain between {ManualLayerState.MinLayerCount} and {ManualLayerState.MaxLayerCount} layer/sdf pairs.");
             }
 
             for (int i = 0; i < layerDtos.Length; i++)

@@ -15,6 +15,7 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             config.AiSplit ??= new AiSplitState();
             config.Localizations ??= new List<LocalizationEntry>();
 
+            NormalizeManualLayers(config.Manual);
             EnsureDefaultLocalization(config.Localizations);
             config.AiSplit.EnsureDynamicResultLists();
         }
@@ -85,6 +86,34 @@ namespace ByteDance.PICO.IconConfigurator.Editor
                 IsDefault = true,
                 CanRemove = false,
             });
+        }
+
+        private static void NormalizeManualLayers(ManualLayerState manual)
+        {
+            if (manual == null)
+            {
+                return;
+            }
+
+            IList<IconLayerConfig> layers = manual.Layers;
+            while (layers.Count > ManualLayerState.MinLayerCount && IsTrailingEmptyLayer(layers[layers.Count - 1]))
+            {
+                layers.RemoveAt(layers.Count - 1);
+            }
+        }
+
+        private static bool IsTrailingEmptyLayer(IconLayerConfig layer)
+        {
+            if (layer == null)
+            {
+                return true;
+            }
+
+            return !layer.HasAssetReference
+                && string.IsNullOrWhiteSpace(layer.OriginalFileName)
+                && string.IsNullOrWhiteSpace(layer.ContentHash)
+                && layer.SourceWidth <= 0
+                && layer.SourceHeight <= 0;
         }
     }
 }

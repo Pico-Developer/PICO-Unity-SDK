@@ -270,9 +270,37 @@ namespace ByteDance.PICO.IconConfigurator.Editor.Tests
             service.StartGenerate(CreateSourceLayer(), "config-guid", _ => { }, (_, _, _) => succeeded = true, error => errorMessage = error);
 
             Assert.That(succeeded, Is.False);
-            Assert.That(errorMessage, Does.Contain("between 2 and 5"));
+            Assert.That(errorMessage, Does.Contain("between 2 and 3"));
             Assert.That(assetDownloader.DownloadedUrls, Is.Empty);
             Assert.That(AssetDatabase.IsValidFolder("Assets/IconConfigurator/Generated/config-guid/ai-split/task-invalid"), Is.False);
+        }
+
+        [Test]
+        public void StartGenerate_WhenResultCountExceedsThreeLayers_ReportsValidationErrorWithoutSuccess()
+        {
+            FakeTosUploader tosUploader = new FakeTosUploader("https://cdn.example.test/flat.png");
+            FakeAiSplitHttpClient httpClient = new FakeAiSplitHttpClient();
+            FakeAiSplitAssetDownloader assetDownloader = new FakeAiSplitAssetDownloader();
+            assetDownloader.AddPng("https://cdn.example.test/fg.png", Color.red);
+            assetDownloader.AddPng("https://cdn.example.test/mid.png", Color.green);
+            assetDownloader.AddPng("https://cdn.example.test/bg.png", Color.blue);
+            assetDownloader.AddPng("https://cdn.example.test/extra.png", Color.yellow);
+            assetDownloader.AddPng("https://cdn.example.test/fg-sdf.png", Color.white);
+            assetDownloader.AddPng("https://cdn.example.test/mid-sdf.png", Color.gray);
+            assetDownloader.AddPng("https://cdn.example.test/bg-sdf.png", Color.black);
+            assetDownloader.AddPng("https://cdn.example.test/extra-sdf.png", new Color(0.25f, 0.25f, 0.25f, 1f));
+            httpClient.EnqueueJson(0, "{\"code\":0,\"message\":\"ok\",\"request_id\":\"request-gen\",\"data\":{\"task_id\":\"task-too-many\"}}");
+            httpClient.EnqueueJson(0, "{\"code\":0,\"message\":\"ok\",\"request_id\":\"request-info\",\"data\":{\"task_id\":\"task-too-many\",\"progress\":100,\"layer\":[{\"url\":\"https://cdn.example.test/fg.png\",\"md5\":\"fg\"},{\"url\":\"https://cdn.example.test/mid.png\",\"md5\":\"mid\"},{\"url\":\"https://cdn.example.test/bg.png\",\"md5\":\"bg\"},{\"url\":\"https://cdn.example.test/extra.png\",\"md5\":\"extra\"}],\"sdf\":[{\"url\":\"https://cdn.example.test/fg-sdf.png\",\"md5\":\"fgs\"},{\"url\":\"https://cdn.example.test/mid-sdf.png\",\"md5\":\"mids\"},{\"url\":\"https://cdn.example.test/bg-sdf.png\",\"md5\":\"bgs\"},{\"url\":\"https://cdn.example.test/extra-sdf.png\",\"md5\":\"extras\"}]}}");
+            RealIconAiSplitService service = CreateService(httpClient, tosUploader, assetDownloader: assetDownloader);
+            bool succeeded = false;
+            string errorMessage = string.Empty;
+
+            service.StartGenerate(CreateSourceLayer(), "config-guid", _ => { }, (_, _, _) => succeeded = true, error => errorMessage = error);
+
+            Assert.That(succeeded, Is.False);
+            Assert.That(errorMessage, Does.Contain("between 2 and 3"));
+            Assert.That(assetDownloader.DownloadedUrls, Is.Empty);
+            Assert.That(AssetDatabase.IsValidFolder("Assets/IconConfigurator/Generated/config-guid/ai-split/task-too-many"), Is.False);
         }
 
         [Test]

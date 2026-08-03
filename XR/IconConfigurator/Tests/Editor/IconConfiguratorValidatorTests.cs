@@ -18,7 +18,7 @@ namespace ByteDance.PICO.IconConfigurator.Editor.Tests
             IconConfiguratorValidationResult result = validator.Validate(config);
 
             Assert.That(result.CanApply, Is.False);
-            Assert.That(result.GeneralErrors, Has.Some.Contains("2 and 5"));
+            Assert.That(result.GeneralErrors, Has.Some.Contains("2 and 3"));
         }
 
         [Test]
@@ -221,10 +221,6 @@ namespace ByteDance.PICO.IconConfigurator.Editor.Tests
                 {
                     CreateLayer(IconLayerKind.Background),
                     CreateLayer(IconLayerKind.Foreground1),
-                    new IconLayerConfig
-                    {
-                        LayerKind = IconLayerKind.Foreground2,
-                    },
                 },
             };
             config.Localizations.Add(new LocalizationEntry

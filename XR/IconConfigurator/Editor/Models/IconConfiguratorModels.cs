@@ -485,7 +485,7 @@ namespace ByteDance.PICO.IconConfigurator.Editor
     public class ManualLayerState
     {
         public const int MinLayerCount = 2;
-        public const int MaxLayerCount = 5;
+        public const int MaxLayerCount = 3;
 
         [SerializeField] private List<IconLayerConfig> m_layers = CreateDefaultLayers();
 
@@ -574,7 +574,6 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             {
                 CreateEmptyLayerForIndex(0),
                 CreateEmptyLayerForIndex(1),
-                CreateEmptyLayerForIndex(2),
             };
         }
 

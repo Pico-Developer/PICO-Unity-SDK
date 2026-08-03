@@ -174,7 +174,8 @@ namespace ByteDance.PICO.IconConfigurator.Editor
 
         private void BuildManualLayerSection(VisualElement layerContent, IconConfiguratorValidationResult validationResult)
         {
-            Label hintLabel = CreatePlaceholderLabel("Manual mode supports 2-5 transparent PNG layers. Drag a file onto a slot to replace it.");
+            Label hintLabel = CreatePlaceholderLabel(
+                $"Manual mode supports {ManualLayerState.MinLayerCount}-{ManualLayerState.MaxLayerCount} transparent PNG layers. Drag a file onto a slot to replace it.");
             layerContent.Add(hintLabel);
 
             List<IconLayerConfig> manualLayers = m_config.Manual.Layers;

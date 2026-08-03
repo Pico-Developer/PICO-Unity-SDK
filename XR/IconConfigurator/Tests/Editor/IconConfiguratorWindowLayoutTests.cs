@@ -139,6 +139,18 @@ namespace ByteDance.PICO.IconConfigurator.Editor.Tests
         }
 
         [Test]
+        public void WindowSource_WhenManualLayerLimitIsThree_UsesUpdatedHintTextAndSharedMaxCount()
+        {
+            const string windowPath =
+                "Packages/sdk/IconConfigurator/Editor/Windows/IconConfiguratorWindow.cs";
+
+            string source = File.ReadAllText(windowPath);
+
+            Assert.That(source.Contains("Manual mode supports {ManualLayerState.MinLayerCount}-{ManualLayerState.MaxLayerCount} transparent PNG layers."), Is.True);
+            Assert.That(source.Contains("supports up to {ManualLayerState.MaxLayerCount} layers"), Is.True);
+        }
+
+        [Test]
         public void WindowSource_WhenAiSplitServiceCreated_UsesFactoryInsteadOfDirectMock()
         {
             const string windowPath =
