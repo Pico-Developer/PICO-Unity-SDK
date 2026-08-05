@@ -959,7 +959,7 @@ namespace ByteDance.PICO.XR.Editor
         {
             "https://github.com/Pico-Developer/gltf-exporter.git?path=package/com.plattar.unitygltf#master",
             "https://github.com/Pico-Developer/usd-unity-sdk.git?path=package/com.unity.formats.usd#dev",
-            "SpatialAdapter/SpatialAdapter-Runtime-Package"
+            "https://github.com/Pico-Developer/PICO-Unity-SDK.git?path=/SpatialAdapter#main"
         };
 
 
