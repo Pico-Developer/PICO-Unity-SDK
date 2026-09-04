@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -29,6 +29,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
         private static readonly string k_BuiltinPrefix = Path.Combine("Resources", "unity_builtin_extra");
 
         private static readonly string k_LastBuildTimeStamp = Path.Combine(k_ExportDirectory, "LastBuildTimeStamp.txt");
+        private static readonly string k_EnabledBuildSceneList = Path.Combine(k_ExportDirectory, "EnabledBuildScenes.txt");
 
         public static string GetExportDirectory()
         {
@@ -124,6 +125,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                 case AssetType.Material:
                     return true;
                 case AssetType.ShaderGraph:
+                    return true;
                 case AssetType.None:
                 default:
                     return false;
@@ -268,16 +270,20 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             }
         }
 
-        public static void SaveBuildTimeStamp()
+        public static void EnsureExportDirectoryExists()
         {
-            if (!Directory.Exists(k_TempDirectory))
+            if (!Directory.Exists(k_ExportDirectory))
             {
-                Directory.CreateDirectory(k_TempDirectory);
+                Directory.CreateDirectory(k_ExportDirectory);
             }
-
-            File.WriteAllText(k_LastBuildTimeStamp, DateTime.Now.AddSeconds(1).ToString());
         }
 
+        public static void SaveBuildTimeStamp()
+        {
+            EnsureExportDirectoryExists();
+            File.WriteAllText(k_LastBuildTimeStamp, DateTime.Now.AddSeconds(1).ToString());
+        }
+        
         public static DateTime? GetLastBuildTimeStamp()
         {
             if (File.Exists(k_LastBuildTimeStamp))
@@ -288,6 +294,35 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             {
                 return null;
             }
+        }
+
+        public static string GetLastEnabledBuildSceneList()
+        {
+            if (File.Exists(k_EnabledBuildSceneList))
+            {
+                return File.ReadAllText(k_EnabledBuildSceneList);
+            }
+
+            return null;
+        }
+
+        public static string[] GetEnabledBuildScenePaths()
+        {
+            return EditorBuildSettings.scenes
+                .Where(scene => scene.enabled && !string.IsNullOrEmpty(scene.path))
+                .Select(scene => scene.path)
+                .ToArray();
+        }
+
+        public static string GetEnabledBuildSceneList()
+        {
+            return string.Join("\n", GetEnabledBuildScenePaths());
+        }
+
+        public static void SaveEnabledBuildSceneList()
+        {
+            EnsureExportDirectoryExists();
+            File.WriteAllText(k_EnabledBuildSceneList, GetEnabledBuildSceneList());
         }
 
         public static void RecursiveCopy(string sourceDir, string destinationDir)

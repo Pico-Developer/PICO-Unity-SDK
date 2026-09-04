@@ -31,8 +31,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             var _textMeshes = new List<TMP_Text>();
             foreach (var root in roots)
             {
-                _textInputs.AddRange(root.GetComponentsInChildren<TMP_InputField>());
-                _textMeshes.AddRange(root.GetComponentsInChildren<TMP_Text>());
+                _textInputs.AddRange(root.GetComponentsInChildren<TMP_InputField>(true));
+                _textMeshes.AddRange(root.GetComponentsInChildren<TMP_Text>(true));
             }
 
             _textInputEnabledStates = new bool[_textInputs.Count];

@@ -11,7 +11,9 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 {
     internal class SpatialAdapterPrefabExporter : SpatialAdapterAssetExporter<int>
     {
-        public SpatialAdapterPrefabExporter(SpatialAdapterExporterSettings inSettings) : base(inSettings) {}
+        public SpatialAdapterPrefabExporter(SpatialAdapterExporterSettings inSettings) : base(inSettings)
+        {
+        }
 
         internal static void SanitizeRecursively(Transform xform)
         {
@@ -30,12 +32,13 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
         internal static int PreprocessPrefab(GameObject prefab)
         {
             SanitizeRecursively(prefab.transform);
-            
+
             var idComponent = prefab.GetComponent<PrefabId>();
             if (idComponent == null)
             {
                 idComponent = prefab.AddComponent<PrefabId>();
             }
+
             idComponent.PrefabIdentifier = prefab.GetInstanceID();
 
             if (prefab.GetComponent<SpatialAdapterGameObjectTracker>() == null)
@@ -67,7 +70,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                     return true;
                 }
 
-                switch(settings.m_Format)
+                switch (settings.m_Format)
                 {
                     case ExportFormat.USDZ:
                     {
@@ -82,7 +85,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                         }
                     }
                         break;
-                
+
                     case ExportFormat.GLB:
                     {
                         // This ensures skinned mesh is exported
@@ -90,7 +93,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                         // Animation clips export based on settings
                         PlattarExporterOptions.ExportAnimationClips = settings.m_ExportAnimationClips;
                         GLTFTextureUtils.textureOption = settings.m_TextureExportOption;
-                        var res = Plattar.Exporter.GenerateGLTF(new GameObject[] { prefab }, Path.GetFileNameWithoutExtension(exportedPath), exportedPath, true);
+                        var res = Plattar.Exporter.GenerateGLTF(new GameObject[] { prefab },
+                            Path.GetFileNameWithoutExtension(exportedPath), exportedPath, true);
                         if (res == null)
                         {
                             throw new BuildFailedException(
@@ -100,11 +104,12 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                         break;
 
                     default:
-                        throw new BuildFailedException("Multi Spatial Exporter: Invalid export format. Format must be either GLB or USDZ");
+                        throw new BuildFailedException(
+                            "Multi Spatial Exporter: Invalid export format. Format must be either GLB or USDZ");
                 }
             }
-
             return true;
+            
         }
     }
 }

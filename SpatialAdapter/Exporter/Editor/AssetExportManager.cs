@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -29,6 +29,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
         private static Dictionary<string, bool> exportResultCache;
         private static int exportedAssetCount = 0;
         private static DateTime? lastBuildTimeStamp;
+        private static string lastEnabledBuildSceneList;
+        private static string currentEnabledBuildSceneList;
 
         public static int remainingSceneCount = 0;
 
@@ -71,8 +73,19 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             exportResultCache = new();
             exportedAssetCount = 0;
             lastBuildTimeStamp = AssetExportHelpers.GetLastBuildTimeStamp();
+            lastEnabledBuildSceneList = AssetExportHelpers.GetLastEnabledBuildSceneList();
+            currentEnabledBuildSceneList = AssetExportHelpers.GetEnabledBuildSceneList();
             remainingSceneCount = EditorBuildSettings.scenes.Count(scene => scene.enabled);
             PruneExportDirectory();
+        }
+
+        private static bool DidEnabledBuildScenesChange()
+        {
+            return !string.Equals(
+                lastEnabledBuildSceneList,
+                currentEnabledBuildSceneList,
+                StringComparison.Ordinal
+            );
         }
         
         private static bool IsAssetDirty(string assetPath, string exportedPath, AssetType assetType)
@@ -91,6 +104,12 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 
             if (string.IsNullOrEmpty(assetPath))
             {
+                return true;
+            }
+
+            if (assetType == AssetType.Scene && DidEnabledBuildScenesChange())
+            {
+                Debug.Log($"SpatialAdapter: forcing re-export for scene {assetPath} because enabled Build Settings scenes changed.");
                 return true;
             }
             
@@ -143,6 +162,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             using (var scope = new ProgressBarScope())
             {
                 bool enableLoadingFromScene = true;
+                var enabledBuildScenePaths = AssetExportHelpers.GetEnabledBuildScenePaths();
 
                 if (isRunningInEditor)
                 {
@@ -152,19 +172,28 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 
                 if (enableLoadingFromScene)
                 {
-                    var scenes = EditorBuildSettings.scenes;
-                    for (int i = 0; i < scenes.Length; ++i)
+                    // Export scene dependencies up front so scene switches can resolve assets from any enabled build scene.
+                    var buildSceneAssets = new HashSet<string>(
+                        AssetDatabase.GetDependencies(enabledBuildScenePaths, true)
+                    );
+                    foreach (var scenePath in enabledBuildScenePaths)
                     {
-                        float progress = i / (float)(scenes.Length) * 100;
+                        buildSceneAssets.Remove(scenePath);
+                    }
+
+                    var buildSceneAssetList = buildSceneAssets.ToArray();
+                    for (int i = 0; i < buildSceneAssetList.Length; ++i)
+                    {
+                        float progress = i / (float)Math.Max(1, buildSceneAssetList.Length);
+                        scope.Display("Exporting assets from enabled build scenes...", progress);
+                        ExportAsset(buildSceneAssetList[i]);
+                    }
+
+                    for (int i = 0; i < enabledBuildScenePaths.Length; ++i)
+                    {
+                        float progress = i / (float)Math.Max(1, enabledBuildScenePaths.Length) * 100;
                         scope.Display("Exporting all scenes in build settings...", progress / 100f);
-
-                        var scene = scenes[i];
-                        if (!scene.enabled)
-                        {
-                            continue;
-                        }
-
-                        ExportAsset(scene.path);
+                        ExportAsset(enabledBuildScenePaths[i]);
                     }
                 }
 
@@ -314,6 +343,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             Debug.Log($"Export finished. Re-exported {exportedAssetCount} assets.");
 
             AssetExportManager.SaveResourceData();
+            AssetExportHelpers.SaveEnabledBuildSceneList();
 
             if (!isRunningInEditor)
             {

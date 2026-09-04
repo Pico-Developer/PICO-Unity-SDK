@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Assertions;
 
@@ -9,9 +10,9 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 {
     internal static class MaterialXGraphSerializer
     {
-        internal static string Serialize(MaterialXGraphData graphData)
+        internal static string Serialize(MaterialXGraphData graphData, Material materialOverride = null)
         {
-            var usdBuilder = new USDBuilder();
+            var usdBuilder = new USDBuilder(materialOverride);
             usdBuilder.ProcessGraph(graphData);
 
             // For consistency, convert to unix-style line endings and paths
@@ -41,6 +42,9 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
         static readonly string vertexShaderOutput = @"token outputs:out";
         
         static readonly string geometryModifierNodeLabel = @"ND_realitykit_geometrymodifier_2_0_vertexshader";
+        
+        //  Override input values for instances of this material
+        private Material overrideMaterial = null;
 
         // RAII solution for creating and closing nested USD scopes
         struct USDScope : IDisposable
@@ -91,6 +95,12 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
         StringBuilder _stringBuilder = new();
         MaterialXGraphData _graph;
 
+
+        internal USDBuilder(Material materialOverride)
+        {
+            overrideMaterial = materialOverride;
+        }
+        
         // Get the fully converted material as a USD-ascii string
         internal string GetUSDAString()
         {
@@ -111,6 +121,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 {
                     foreach (var node in _graph.Nodes)
                     {
+                        
                         if (node.NodeType.Equals(MaterialXNodeType.Material, StringComparison.OrdinalIgnoreCase))
                         {
                             string materialDefinition = $@"def Material ""{node.Name}""";
@@ -130,6 +141,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             Assert.IsTrue(materialNode.DataType.ToTypeString().Equals("material", StringComparison.OrdinalIgnoreCase));
             Assert.IsTrue(materialNode.NodeType.Equals(MaterialXNodeType.Material, StringComparison.OrdinalIgnoreCase));
 
+            string nodeGraphName = $@"""{materialNode.Name}""_NG"; 
+            
             MaterialXNodeData surfaceShaderNode = _graph.GetConnectedNodeData(materialNode, "surfaceshader");
             _graph.TryGetConnectedNode(materialNode, "vertexshader", out var vertexShaderNode);
 
@@ -163,8 +176,14 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                     $@"uniform token info:id = ""{geometryModifierNodeLabel}""",
                     vertexShaderOutput, shaderSubgraphRoots);
             }
+            
+            ProcessShaderSubgraphs(materialScope, materialNode, shaderSubgraphRoots);   
 
-            ProcessShaderSubgraphs(materialScope, materialNode, shaderSubgraphRoots);
+            //  TODO: Put shader graph in a dedicated scope, ensure that root shaders have correct references 
+            /*using (var nodeGraphScope = materialScope.AddChildScope($@"def NodeGraph ""{materialNode.Name}_NG"""))
+            {
+                ProcessShaderSubgraphs(nodeGraphScope, materialNode, shaderSubgraphRoots);   
+            }*/
         }
 
         private void ProcessShaderProperties(USDScope materialScope)
@@ -184,6 +203,57 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             _stringBuilder.AppendLine("");
         }
 
+        private MaterialXPortData GetOverrideInputPort(MaterialXNodeData input)
+        {
+            object newValue = input.GetPort("value").ByteValue; 
+            if (overrideMaterial.HasProperty(input.Name))
+            {
+                var shaderType = MaterialXDataTypeExtensions.ToUnityShaderPropertyType(input.DataType);
+                switch (shaderType)
+                {
+                    case ShaderUtil.ShaderPropertyType.Color:
+                    {
+                        var color = overrideMaterial.GetColor(input.Name);
+                        newValue = input.DataType == MaterialXDataType.Color3
+                            ? new[] { color.r, color.g, color.b }
+                            : new[] { color.r, color.g, color.b, color.a };
+                        break;
+                    }
+                    case ShaderUtil.ShaderPropertyType.Vector:
+                    {
+                        var vector = overrideMaterial.GetVector(input.Name);
+                        newValue = input.DataType switch
+                        {
+                            MaterialXDataType.Vector2 => new[] { vector.x, vector.y },
+                            MaterialXDataType.Vector3 => new[] { vector.x, vector.y, vector.z },
+                            _ => new[] { vector.x, vector.y, vector.z, vector.w }
+                        };
+                        break;
+                    }
+                    case ShaderUtil.ShaderPropertyType.Float:
+                        newValue = new[] { overrideMaterial.GetFloat(input.Name) };
+                        break;
+                    case ShaderUtil.ShaderPropertyType.Range:
+                        newValue = new[] { overrideMaterial.GetFloat(input.Name) };
+                        break;
+                    case ShaderUtil.ShaderPropertyType.Int:
+                        newValue = new[] { (float)overrideMaterial.GetInt(input.Name) };
+                        break;
+                    case ShaderUtil.ShaderPropertyType.TexEnv:
+                    {
+                        var texture = overrideMaterial.GetTexture(input.Name);
+                        if (texture != null)
+                        {
+                            newValue = texture.name;
+                        }
+                        break;
+                    }
+                }
+            }
+            var newPort = new MaterialXPortData(input.Name, input.DataType, newValue);
+            return newPort;
+        }
+        
         private void ProcessShaderInput(string input, USDScope materialScope)
         {
             var inputNode = _graph.GetNode(input);
@@ -192,22 +262,25 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 Debug.LogWarning($"Missing node for shader input {input}");
                 return;
             }
+            
+            
+            //  Override input port with material-specified value if it exists.
+            var newInputPort = (overrideMaterial != null) ? GetOverrideInputPort(inputNode) 
+                : inputNode.GetPort("value");
 
             // Currently, filenames are always textures. The texture may have been specified
             // as "None" at processing time, in which case we will have no ports.
             if (inputNode.DataType.ToTypeString().Equals("filename"))
             {
                 AppendIndentedLine(
-                    @$"{GetUSDDataTypeString(inputNode.DataType)} inputs:{inputNode.Name} = @{inputNode.GetPort("value").StringValue}@ (colorSpace = ""srgb_texture"")",
+                    @$"{GetUSDDataTypeString(inputNode.DataType)} inputs:{inputNode.Name} = @{newInputPort.StringValue}@ (colorSpace = ""srgb_texture"")",
                     materialScope.ChildIndentLevel);
                 return;
             }
 
             Assert.AreEqual(inputNode.Ports.Count(), 1);
-            foreach (var port in inputNode.Ports)
-            {
-                AppendPortInput(port, inputNode.Name, materialScope.ChildIndentLevel);
-            }
+            AppendPortInput(newInputPort, inputNode.Name, materialScope.ChildIndentLevel);
+            
         }
 
         private void ProcessShader(

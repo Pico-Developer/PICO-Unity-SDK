@@ -16,10 +16,12 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             "SurfaceDescription"
         };
         
-        internal static MaterialXGraphData Convert(GraphData shaderGraphData, string shaderGraphAssetPath)
+        internal static MaterialXGraphData Convert(GraphData shaderGraphData, string shaderGraphAssetPath, string shaderGraphNameOverride = null)
         {
             StagingEdges stagingEdges = new();
-            string shaderGraphName = Path.GetFileNameWithoutExtension(shaderGraphAssetPath);
+            string shaderGraphName = string.IsNullOrEmpty(shaderGraphNameOverride)
+                ? Path.GetFileNameWithoutExtension(shaderGraphAssetPath)
+                : shaderGraphNameOverride;
             MaterialXGraphData graphData = new(shaderGraphName, shaderGraphData.path, shaderGraphAssetPath);
             
             foreach (var node in shaderGraphData.GetNodes<AbstractMaterialNode>())

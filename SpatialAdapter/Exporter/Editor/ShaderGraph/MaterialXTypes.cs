@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel;
 using System.Reflection;
+using UnityEditor;
 
 namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 {
@@ -297,6 +298,39 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             "float4x4" => MaterialXDataType.Matrix44,
             _ => MaterialXDataType.Unsupported,
         };
+        
+        internal static ShaderUtil.ShaderPropertyType ToUnityShaderPropertyType(MaterialXDataType materialXType)
+        {
+            switch (materialXType)
+            {
+                case MaterialXDataType.Integer:
+                    return ShaderUtil.ShaderPropertyType.Int;
+                case MaterialXDataType.Boolean:
+                case MaterialXDataType.Float:
+                    return ShaderUtil.ShaderPropertyType.Float;
+                case MaterialXDataType.Vector2:
+                case MaterialXDataType.Vector3:
+                case MaterialXDataType.Vector4:
+                    return ShaderUtil.ShaderPropertyType.Vector;
+                case MaterialXDataType.Color3:
+                case MaterialXDataType.Color4:
+                    return ShaderUtil.ShaderPropertyType.Color;
+                case MaterialXDataType.Unsupported:
+                case MaterialXDataType.Displacement:
+                case MaterialXDataType.Vertex:
+                case MaterialXDataType.Surface:
+                case MaterialXDataType.Material:
+                case MaterialXDataType.Matrix22:
+                case MaterialXDataType.Matrix33:
+                case MaterialXDataType.Matrix44:
+                case MaterialXDataType.Filename:
+                case MaterialXDataType.String:
+                case MaterialXDataType.FloatArray:
+                case MaterialXDataType.Color4Array: 
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(materialXType), materialXType, null);
+            }
+        }
 
     }
 }

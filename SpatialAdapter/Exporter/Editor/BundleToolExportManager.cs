@@ -26,12 +26,14 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
         private static readonly string k_toolsRootDirectory = Path.GetFullPath("../../Tools~/", GetCurrentFileDir());
         private static readonly string k_bundleToolRootDirectory =  Path.Combine(k_toolsRootDirectory, "SpatialBundle/");
 #if UNITY_EDITOR_WIN
-        private static readonly string k_bundleToolPlatformDir =  Path.Combine(k_bundleToolRootDirectory, "win/");
-        private static readonly string k_bundleToolExe = Path.Combine(k_bundleToolPlatformDir, "spatialbundle.exe"); //
+        private const string k_bundleToolPlatformFolderName = "win";
+        private static string k_bundleToolPlatformDir => ResolveBundleToolPlatformDirectory(k_bundleToolPlatformFolderName);
+        private static string k_bundleToolExe => Path.Combine(k_bundleToolPlatformDir, "spatialbundle.exe"); //
 #elif UNITY_EDITOR_OSX
-        private static readonly string k_bundleToolPlatformDir =  Path.Combine(k_bundleToolRootDirectory, "osx/");
-        private static readonly string k_bundleToolExe = Path.Combine(k_bundleToolPlatformDir, "spatialbundle");
-        private static readonly string k_matcExe = Path.Combine(k_bundleToolPlatformDir, "prebuilt/darwin/arm64/matc");
+        private const string k_bundleToolPlatformFolderName = "osx";
+        private static string k_bundleToolPlatformDir => ResolveBundleToolPlatformDirectory(k_bundleToolPlatformFolderName);
+        private static string k_bundleToolExe => Path.Combine(k_bundleToolPlatformDir, "spatialbundle");
+        private static string k_matcExe => Path.Combine(k_bundleToolPlatformDir, "prebuilt/darwin/arm64/matc");
 #endif
         private static readonly string k_bundleToolZipFilename = "SpatialBundle.zip"; 
         
@@ -171,6 +173,23 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             }
         }
 #endif
+
+        private static string ResolveBundleToolPlatformDirectory(string platformFolderName)
+        {
+            string platformDirectory = Path.Combine(k_bundleToolRootDirectory, platformFolderName);
+            if (Directory.Exists(platformDirectory))
+            {
+                return platformDirectory;
+            }
+
+            string binDirectory = Path.Combine(k_bundleToolRootDirectory, "bin");
+            if (Directory.Exists(binDirectory))
+            {
+                return binDirectory;
+            }
+
+            return platformDirectory;
+        }
 
         private static string GetCurrentFileDir([CallerFilePath] string filePath = "")
         {

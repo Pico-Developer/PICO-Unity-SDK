@@ -25,7 +25,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                 "",                     // Default directory (empty means the last folder used)
                 ""                      // Default name (empty since we're just selecting a folder)
             );
-            
+
             if (string.IsNullOrEmpty(outputDir))
             {
                 Debug.LogError("Invalid output directory");
@@ -36,7 +36,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             {
                 var graphObj = Selection.objects[i];
                 string shaderGraphPath = AssetDatabase.GetAssetPath(graphObj);
-                ShaderGraphExporter.ExportShaderGraph(shaderGraphPath, Path.Combine(outputDir, Path.GetFileName(shaderGraphPath)),"");
+                ShaderGraphExporter.ExportShaderGraph(shaderGraphPath, Path.Combine(outputDir, Path.GetFileName(shaderGraphPath)), outputDir);
             }
         }
         
@@ -64,7 +64,6 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                     bundleOutputDir, 
                     formats);
             }
-
         }
     }
 }

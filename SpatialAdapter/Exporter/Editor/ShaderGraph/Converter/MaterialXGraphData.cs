@@ -2,7 +2,9 @@
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 {
@@ -52,7 +54,9 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             MaterialXNodeData node = new MaterialXNodeData(name, nodeType, dataType);
             _nodeDataLookup.Add(name, node);
             if (isInput)
+            {
                 InputNodeNames.Add(name);
+            }
             if (isSystemInput)
                 SystemInputNodeNames.Add(name);
             return node;
