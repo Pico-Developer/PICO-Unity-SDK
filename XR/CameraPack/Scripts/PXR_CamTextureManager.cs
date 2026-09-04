@@ -34,6 +34,8 @@ namespace ByteDance.PICO.CameraPack
         private bool _hasPermission;
         private bool _hasReceivedFirstFrame;
         private Coroutine _startCameraCoroutine = null;
+        private int _cameraOpenGeneration;
+        private bool _cameraCleanupPending;
         // Internal state
         private int _requestedWidth;
         private int _requestedHeight;
@@ -131,6 +133,12 @@ namespace ByteDance.PICO.CameraPack
         /// <param name="resolution">The desired resolution.</param>
         public void OpenCameraAsync(PXRCameraEye eye, PXRCameraFPS fps, Vector2Int resolution)
         {
+            bool shouldRestartCamera = !IsCurrentConfiguration(eye, fps, resolution) && HasActiveOpenOrPendingRequest();
+            if (shouldRestartCamera)
+            {
+                Stop();
+            }
+
             // Update internal configuration
             Eye = eye;
             FPS = fps;
@@ -138,6 +146,28 @@ namespace ByteDance.PICO.CameraPack
             
             // Trigger Play logic
             Play();
+        }
+
+        private bool IsCurrentConfiguration(PXRCameraEye eye, PXRCameraFPS fps, Vector2Int resolution)
+        {
+            return Eye == eye && FPS == fps && Resolution == resolution;
+        }
+
+        private bool HasActiveOpenOrPendingRequest()
+        {
+            if (_startCameraCoroutine != null)
+            {
+                return true;
+            }
+
+            if (_cameraAPI == null)
+            {
+                return false;
+            }
+
+            PXRCameraStateCode state = _cameraAPI.GetState();
+            return state == PXRCameraStateCode.STATE_CAMERA_OPENED ||
+                   state == PXRCameraStateCode.STATE_VIDEO_PREVIEWING;
         }
 
         /// <summary>
@@ -190,6 +220,18 @@ namespace ByteDance.PICO.CameraPack
             if (_cameraAPI == null)
             {
                 Debug.LogError("Camera API not initialized.");
+                return;
+            }
+
+            if (_cameraCleanupPending && !CloseCameraAndTrackPendingCleanup())
+            {
+                Debug.LogWarning($"Camera {Eye} cleanup is still pending; Play will retry later.");
+                return;
+            }
+
+            if (_cameraAPI.GetState() == PXRCameraStateCode.STATE_VIDEO_PREVIEWING)
+            {
+                PLog.CameraLog(Tag, $"Camera {Eye} is already previewing.");
                 return;
             }
 
@@ -304,12 +346,13 @@ namespace ByteDance.PICO.CameraPack
 
             // Start Camera
             PLog.CameraLog(Tag, $"Starting camera routine. Requested: {_requestedWidth}x{_requestedHeight} @ {_requestedFPS}fps");
-            
+
+            int openGeneration = ++_cameraOpenGeneration;
             if (_startCameraCoroutine != null)
             {
                 StopCoroutine(_startCameraCoroutine);
             }
-            _startCameraCoroutine = StartCoroutine(StartCameraRoutine());
+            _startCameraCoroutine = StartCoroutine(StartCameraRoutine(openGeneration));
         }
 
 
@@ -352,48 +395,90 @@ namespace ByteDance.PICO.CameraPack
             }
         }
 
-        private IEnumerator StartCameraRoutine()
+        private IEnumerator StartCameraRoutine(int openGeneration)
         {
             var task = _cameraAPI.OpenCameraAsync(Eye, _requestedWidth, _requestedHeight, _requestedFPS);
             yield return new WaitUntil(() => task.IsCompleted);
-            
+
+            if (openGeneration != _cameraOpenGeneration)
+            {
+                if (!task.IsFaulted && !task.IsCanceled && task.Result)
+                {
+                    CloseCameraAndTrackPendingCleanup();
+                }
+                yield break;
+            }
+
+            if (task.IsFaulted)
+            {
+                Debug.LogError($"Failed to open camera: {task.Exception?.GetBaseException().Message}");
+                _startCameraCoroutine = null;
+                yield break;
+            }
+
+            if (task.IsCanceled)
+            {
+                Debug.LogError("Failed to open camera: operation was canceled.");
+                _startCameraCoroutine = null;
+                yield break;
+            }
+
             if (task.Result)
             {
-                // Ensure CameraAPI initialization logic is triggered if it hasn't been already
-                _cameraAPI.OnCameraCreate();
                 bool success = _cameraAPI.StartPreview();
                 if (success)
                 {
+                    // Start the frame loop only after native capture has entered preview.
+                    _cameraAPI.OnCameraCreate();
                     Debug.Log($"PICO Camera Preview Started: {Eye}, {CurrentResolution.x}x{CurrentResolution.y} @ {_requestedFPS}fps");
                 }
                 else
                 {
                     Debug.LogError("Failed to start camera preview.");
+                    CloseCameraAndTrackPendingCleanup();
                 }
             }
             else
             {
                 Debug.LogError("Failed to open camera.");
             }
+
+            _startCameraCoroutine = null;
         }
 
         public void Stop()
         {
             PLog.CameraLog(Tag, "Stop() called.");
+            _cameraOpenGeneration++;
             if (_cameraAPI != null)
             {
                 _cameraAPI.OnFirstFrameReceived -= OnFirstFrameReceived;
-                
-                if (_cameraAPI.GetState() >= PXRCameraStateCode.STATE_CAMERA_OPENED)
+
+                if (_startCameraCoroutine != null)
                 {
-                    _cameraAPI.StopPreview();
-                    _cameraAPI.CloseCamera();
+                    StopCoroutine(_startCameraCoroutine);
+                    _startCameraCoroutine = null;
                 }
-                
+
+                CloseCameraAndTrackPendingCleanup();
+
                 // Stop the frame loop coroutine in CameraAPI
                 _cameraAPI.StopAllCoroutines();
             }
             _isPlaying = false;
+        }
+
+        private bool CloseCameraAndTrackPendingCleanup()
+        {
+            if (_cameraAPI == null)
+            {
+                _cameraCleanupPending = false;
+                return true;
+            }
+
+            bool success = _cameraAPI.CloseCamera();
+            _cameraCleanupPending = !success;
+            return success;
         }
 
         public Texture GetTexture()
@@ -410,8 +495,44 @@ namespace ByteDance.PICO.CameraPack
         public bool GetPixels32(Color32[] colors)
         {
             if (colors == null || _cameraAPI == null) return false;
-            _cameraAPI.GetPixels32(colors);
-            return true;
+            return _cameraAPI.GetPixels32(colors);
+        }
+
+        public bool TryGetLatestFrameSnapshot(out PXRCameraFrameSnapshot snapshot)
+        {
+            snapshot = default;
+            if (_cameraAPI == null)
+            {
+                InitializeCameraAPI();
+            }
+
+            if (_cameraAPI == null)
+            {
+                return false;
+            }
+
+            return _cameraAPI.TryGetLatestFrameSnapshot(out snapshot);
+        }
+
+        public bool TryCopyLatestFramePixels(Color32[] buffer, out PXRCameraFrameSnapshot snapshot)
+        {
+            snapshot = default;
+            if (buffer == null)
+            {
+                return false;
+            }
+
+            if (_cameraAPI == null)
+            {
+                InitializeCameraAPI();
+            }
+
+            if (_cameraAPI == null)
+            {
+                return false;
+            }
+
+            return _cameraAPI.TryCopyLatestFramePixels(buffer, out snapshot);
         }
 
         #endregion

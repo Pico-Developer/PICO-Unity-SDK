@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.XR;
@@ -8,97 +9,6 @@ using ByteDance.PICO.OpenXR;
 
 namespace ByteDance.PICO.XR
 {
-    public enum PXR_PerformancePackDeviceProfile
-    {
-        ProjectSwan = 0,
-        PICO4Series = 1,
-        OtherDevice = 2,
-    }
-
-    [Serializable]
-    public sealed class PXR_PerformancePackDeviceConfig
-    {
-        public float renderScale = 1.0f;
-        public string refreshRate = "90Hz";
-        public string foveation = "FFR-None";
-        public string antiAliasing = "Default";
-        public bool superResolution;
-        public bool hdr = true;
-        public bool adaptiveResolution;
-        public SharpeningMode sharpeningMode = SharpeningMode.None;
-    }
-
-    public sealed class PXR_PerformancePackConfig : ScriptableObject
-    {
-        public const string ResourceName = "PXR_PerformancePackRuntimeConfig";
-
-        public bool deviceProjectSwan = true;
-        public bool devicePico4Series = true;
-        public bool deviceOtherDevice;
-        public PXR_PerformancePackDeviceProfile editingProfile = PXR_PerformancePackDeviceProfile.ProjectSwan;
-
-        public PXR_PerformancePackDeviceConfig projectSwan = new PXR_PerformancePackDeviceConfig
-        {
-            renderScale = 1.15f,
-            refreshRate = "90Hz",
-            foveation = "ETFR-Med",
-            antiAliasing = "Default",
-            superResolution = true,
-            hdr = true,
-            adaptiveResolution = true,
-            sharpeningMode = SharpeningMode.None,
-        };
-
-        public PXR_PerformancePackDeviceConfig pico4Series = new PXR_PerformancePackDeviceConfig
-        {
-            renderScale = 1.0f,
-            refreshRate = "72Hz",
-            foveation = "FFR-None",
-            antiAliasing = "Default",
-            superResolution = false,
-            hdr = false,
-            adaptiveResolution = true,
-            sharpeningMode = SharpeningMode.None,
-        };
-
-        public PXR_PerformancePackDeviceConfig otherDevice = new PXR_PerformancePackDeviceConfig
-        {
-            renderScale = 1.0f,
-            refreshRate = "Default",
-            foveation = "FFR-None",
-            antiAliasing = "Default",
-            superResolution = false,
-            hdr = false,
-            adaptiveResolution = false,
-            sharpeningMode = SharpeningMode.None,
-        };
-
-        public string presetName = "Default";
-        public long updatedAtUnixMs;
-
-        public PXR_PerformancePackDeviceConfig GetDeviceConfig(PXR_PerformancePackDeviceProfile profile)
-        {
-            EnsureDeviceConfigs();
-            switch (profile)
-            {
-                case PXR_PerformancePackDeviceProfile.PICO4Series:
-                    return pico4Series;
-                case PXR_PerformancePackDeviceProfile.OtherDevice:
-                    return otherDevice;
-                case PXR_PerformancePackDeviceProfile.ProjectSwan:
-                default:
-                    return projectSwan;
-            }
-        }
-
-        public void EnsureDeviceConfigs()
-        {
-            if (projectSwan == null) projectSwan = new PXR_PerformancePackDeviceConfig();
-            if (pico4Series == null) pico4Series = new PXR_PerformancePackDeviceConfig();
-            if (otherDevice == null) otherDevice = new PXR_PerformancePackDeviceConfig();
-        }
-    }
-
     public sealed class PXR_PerformancePackRuntime : MonoBehaviour
     {
         private static PXR_PerformancePackConfig _config;
@@ -141,11 +51,11 @@ namespace ByteDance.PICO.XR
         public static PXR_PerformancePackDeviceProfile ResolveRuntimeDeviceProfile()
         {
             string productName = PXR_Plugin.System.UPxr_GetProductName();
-            if (StartsWithDeviceName(productName, "Project Swan"))
+            if (StartsWithDeviceName(productName, "swan"))
             {
                 return PXR_PerformancePackDeviceProfile.ProjectSwan;
             }
-            if (StartsWithDeviceName(productName, "PICO 4"))
+            if (StartsWithDeviceName(productName, "PICO 4 Ultra"))
             {
                 return PXR_PerformancePackDeviceProfile.PICO4Series;
             }
@@ -167,10 +77,15 @@ namespace ByteDance.PICO.XR
                 projectConfig.superResolution = config.superResolution;
 
                 SharpeningMode sharpeningMode = config.superResolution ? SharpeningMode.None : config.sharpeningMode;
+                SharpeningEnhance sharpeningEnhance = sharpeningMode == SharpeningMode.None
+                    ? SharpeningEnhance.None
+                    : config.sharpeningEnhance;
                 projectConfig.normalSharpening = sharpeningMode == SharpeningMode.Normal;
                 projectConfig.qualitySharpening = sharpeningMode == SharpeningMode.Quality;
-                projectConfig.fixedFoveatedSharpening = false;
-                projectConfig.selfAdaptiveSharpening = false;
+                projectConfig.fixedFoveatedSharpening = sharpeningEnhance == SharpeningEnhance.FixedFoveated ||
+                                                       sharpeningEnhance == SharpeningEnhance.Both;
+                projectConfig.selfAdaptiveSharpening = sharpeningEnhance == SharpeningEnhance.SelfAdaptive ||
+                                                       sharpeningEnhance == SharpeningEnhance.Both;
             }
 
             var settings = PXR_Settings.GetSettings();
@@ -183,24 +98,26 @@ namespace ByteDance.PICO.XR
         private static void ApplyAtRuntime(PXR_PerformancePackDeviceConfig config)
         {
             float scale = Mathf.Clamp(config.renderScale, 0f, 2f);
-            XRSettings.eyeTextureResolutionScale = scale;
+            ApplyRenderScale(scale);
 
             PXR_Manager manager = PXR_Manager.Instance;
             manager.adaptiveResolution = config.adaptiveResolution;
             manager.enableSuperResolution = config.superResolution;
             manager.sharpeningMode = config.superResolution ? SharpeningMode.None : config.sharpeningMode;
-            manager.sharpeningEnhance = SharpeningEnhance.None;
+            manager.sharpeningEnhance = manager.sharpeningMode == SharpeningMode.None
+                ? SharpeningEnhance.None
+                : config.sharpeningEnhance;
             manager.maxEyeTextureScale = scale;
             manager.minEyeTextureScale = Mathf.Clamp(scale * 0.85f, 0f, manager.maxEyeTextureScale);
 
             if (TryParseFoveation(config.foveation, out FoveatedRenderingMode mode, out FoveationLevel level))
             {
                 manager.foveatedRenderingMode = mode;
+                manager.eyeTracking = mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering && level != FoveationLevel.None;
                 if (mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering)
                 {
                     manager.eyeFoveationLevel = level;
                     manager.foveationLevel = FoveationLevel.None;
-                    manager.eyeTracking = level != FoveationLevel.None;
                 }
                 else
                 {
@@ -217,6 +134,35 @@ namespace ByteDance.PICO.XR
                 PXR_Plugin.System.UPxr_SetSystemDisplayFrequency((float)hz);
 #endif
             }
+        }
+
+        private static void ApplyRenderScale(float scale)
+        {
+            XRSettings.eyeTextureResolutionScale = scale;
+
+            RenderPipelineAsset pipelineAsset = QualitySettings.renderPipeline != null
+                ? QualitySettings.renderPipeline
+                : GraphicsSettings.defaultRenderPipeline;
+            if (pipelineAsset == null ||
+                !string.Equals(
+                    pipelineAsset.GetType().FullName,
+                    "UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset",
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            PropertyInfo renderScaleProperty = pipelineAsset.GetType().GetProperty(
+                "renderScale",
+                BindingFlags.Instance | BindingFlags.Public);
+            if (renderScaleProperty == null ||
+                !renderScaleProperty.CanWrite ||
+                renderScaleProperty.PropertyType != typeof(float))
+            {
+                return;
+            }
+
+            renderScaleProperty.SetValue(pipelineAsset, scale);
         }
 
         private static void ApplyFoveationToProjectSetting(PXR_ProjectSetting projectConfig, PXR_PerformancePackDeviceConfig config)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -6,6 +6,46 @@ namespace ByteDance.PICO.XR
 {
     public static class PXR_CameraImage
     {
+        private const int CameraFuturePollDelayMilliseconds = 11;
+
+        private readonly struct CameraFutureWaitResult
+        {
+            public readonly PxrResult PollResult;
+            public readonly bool CancellationRequested;
+
+            public CameraFutureWaitResult(PxrResult pollResult, bool cancellationRequested)
+            {
+                PollResult = pollResult;
+                CancellationRequested = cancellationRequested;
+            }
+        }
+
+        private static async Task<CameraFutureWaitResult> WaitForCameraFutureReadyAsync(ulong future, CancellationToken token)
+        {
+            bool cancellationRequested = token.IsCancellationRequested;
+
+            while (true)
+            {
+                var pollResult = PXR_Plugin.MixedReality.UPxr_PollFuture(future, out var futureState);
+                if (pollResult != PxrResult.SUCCESS)
+                {
+                    return new CameraFutureWaitResult(pollResult, cancellationRequested || token.IsCancellationRequested);
+                }
+
+                if (futureState == PxrFutureState.Ready)
+                {
+                    return new CameraFutureWaitResult(PxrResult.SUCCESS, cancellationRequested || token.IsCancellationRequested);
+                }
+
+                if (token.IsCancellationRequested)
+                {
+                    cancellationRequested = true;
+                }
+
+                await Task.Delay(CameraFuturePollDelayMilliseconds);
+            }
+        }
+
         /// <summary>
         /// Gets available camera device identifiers supported by the runtime.
         /// </summary>
@@ -268,47 +308,66 @@ namespace ByteDance.PICO.XR
         /// <param name="cameraId">Input. Target camera ID.</param>
         /// <param name="token">Input. Cancellation token to abort the operation.</param>
         /// <returns>Task that completes with the operation result.</returns>
-        public static async Task<PxrResult> CreateCameraDeviceAsync(XrCameraIdPICO cameraId,
+        public static Task<PxrResult> CreateCameraDeviceAsync(XrCameraIdPICO cameraId,
             CancellationToken token = default)
+        {
+            return CreateCameraDeviceAsyncCore(cameraId, 0, false, token);
+        }
+
+        public static Task<PxrResult> CreateCameraDeviceAsync(
+            XrCameraIdPICO cameraId, ulong ownerToken, CancellationToken token = default)
+        {
+            return CreateCameraDeviceAsyncCore(cameraId, ownerToken, true, token);
+        }
+
+        private static async Task<PxrResult> CreateCameraDeviceAsyncCore(
+            XrCameraIdPICO cameraId, ulong ownerToken, bool useOwnerToken,
+            CancellationToken token)
         {
             return await Task.Run(async () =>
             {
-                var startResult = PXR_CameraImagePlugin.UPxr_CreateCameraDevice((int)cameraId, out var future);
+                PxrResult startResult = useOwnerToken
+                    ? PXR_CameraImagePlugin.UPxr_CreateCameraDeviceWithOwner(
+                        (int)cameraId, ownerToken, out var future)
+                    : PXR_CameraImagePlugin.UPxr_CreateCameraDevice((int)cameraId, out future);
 
-                if (startResult == PxrResult.SUCCESS)
-                {
-                    while (true)
-                    {
-                        var pollResult = PXR_Plugin.MixedReality.UPxr_PollFuture(future, out var futureState);
-                        if (pollResult == PxrResult.SUCCESS)
-                        {
-                            if (futureState == PxrFutureState.Ready)
-                            {
-                                var completeResult =
-                                    PXR_CameraImagePlugin.UPxr_CreateCameraDeviceComplete((int)cameraId, future,
-                                        out var completion);
-                                if (completeResult == PxrResult.SUCCESS)
-                                {
-                                    return completion.futureResult;
-                                }
-                                else
-                                {
-                                    return completeResult;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            return pollResult;
-                        }
-
-                        await Task.Delay(11, token);
-                    }
-                }
-                else
+                if (startResult != PxrResult.SUCCESS)
                 {
                     return startResult;
                 }
+
+                CameraFutureWaitResult waitResult = await WaitForCameraFutureReadyAsync(future, token);
+                if (waitResult.PollResult != PxrResult.SUCCESS)
+                {
+                    return waitResult.PollResult;
+                }
+
+                PxrResult completeResult = useOwnerToken
+                    ? PXR_CameraImagePlugin.UPxr_CreateCameraDeviceCompleteWithOwner(
+                        (int)cameraId, ownerToken, future, out var completion)
+                    : PXR_CameraImagePlugin.UPxr_CreateCameraDeviceComplete(
+                        (int)cameraId, future, out completion);
+                if (completeResult != PxrResult.SUCCESS)
+                {
+                    return completeResult;
+                }
+
+                if ((waitResult.CancellationRequested || token.IsCancellationRequested) &&
+                    completion.futureResult == PxrResult.SUCCESS)
+                {
+                    if (useOwnerToken)
+                    {
+                        PXR_CameraImagePlugin.UPxr_DestroyCameraDeviceWithOwner(
+                            (int)cameraId, ownerToken);
+                    }
+                    else
+                    {
+                        PXR_CameraImagePlugin.UPxr_DestroyCameraDevice((int)cameraId);
+                    }
+                    return PxrResult.ERROR_RUNTIME_FAILURE;
+                }
+
+                return completion.futureResult;
             }, token);
         }
 
@@ -324,50 +383,82 @@ namespace ByteDance.PICO.XR
         /// <param name="model">Input. Camera model.</param>
         /// <param name="token">Input. Cancellation token to abort the operation.</param>
         /// <returns>Task that completes with the operation result.</returns>
-        public static async Task<PxrResult> CreateCameraCaptureSessionAsync(XrCameraIdPICO cameraId, int width, int height, XrCameraImageFpsPICO fps,
+        public static Task<PxrResult> CreateCameraCaptureSessionAsync(
+            XrCameraIdPICO cameraId, int width, int height, XrCameraImageFpsPICO fps,
             XrCameraImageFormatPICO format,
             XrCameraDataTransferTypePICO transferType,
             XrCameraModelPICO model,
             CancellationToken token = default)
         {
+            return CreateCameraCaptureSessionAsyncCore(
+                cameraId, 0, false, width, height, fps, format, transferType, model, token);
+        }
+
+        public static Task<PxrResult> CreateCameraCaptureSessionAsync(
+            XrCameraIdPICO cameraId, ulong ownerToken, int width, int height,
+            XrCameraImageFpsPICO fps, XrCameraImageFormatPICO format,
+            XrCameraDataTransferTypePICO transferType, XrCameraModelPICO model,
+            CancellationToken token = default)
+        {
+            return CreateCameraCaptureSessionAsyncCore(
+                cameraId, ownerToken, true, width, height, fps, format, transferType, model, token);
+        }
+
+        private static async Task<PxrResult> CreateCameraCaptureSessionAsyncCore(
+            XrCameraIdPICO cameraId, ulong ownerToken, bool useOwnerToken,
+            int width, int height, XrCameraImageFpsPICO fps,
+            XrCameraImageFormatPICO format,
+            XrCameraDataTransferTypePICO transferType,
+            XrCameraModelPICO model,
+            CancellationToken token)
+        {
             return await Task.Run(async () =>
             {
-                var startResult = PXR_CameraImagePlugin.UPxr_CreateCameraCaptureSession((int)cameraId, width, height, fps, format, transferType, model, out var future);
+                PxrResult startResult = useOwnerToken
+                    ? PXR_CameraImagePlugin.UPxr_CreateCameraCaptureSessionWithOwner(
+                        (int)cameraId, ownerToken, width, height, fps, format,
+                        transferType, model, out var future)
+                    : PXR_CameraImagePlugin.UPxr_CreateCameraCaptureSession(
+                        (int)cameraId, width, height, fps, format,
+                        transferType, model, out future);
 
-                if (startResult == PxrResult.SUCCESS)
-                {
-                    while (true)
-                    {
-                        var pollResult = PXR_Plugin.MixedReality.UPxr_PollFuture(future, out var futureState);
-                        if (pollResult == PxrResult.SUCCESS)
-                        {
-                            if (futureState == PxrFutureState.Ready)
-                            {
-                                var completeResult =
-                                    PXR_CameraImagePlugin.UPxr_CreateCameraCaptureSessionComplete((int)cameraId, future,
-                                        out var completion);
-                                if (completeResult == PxrResult.SUCCESS)
-                                {
-                                    return completion.futureResult;
-                                }
-                                else
-                                {
-                                    return completeResult;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            return pollResult;
-                        }
-
-                        await Task.Delay(11, token);
-                    }
-                }
-                else
+                if (startResult != PxrResult.SUCCESS)
                 {
                     return startResult;
                 }
+
+                CameraFutureWaitResult waitResult = await WaitForCameraFutureReadyAsync(future, token);
+                if (waitResult.PollResult != PxrResult.SUCCESS)
+                {
+                    return waitResult.PollResult;
+                }
+
+                PxrResult completeResult = useOwnerToken
+                    ? PXR_CameraImagePlugin.UPxr_CreateCameraCaptureSessionCompleteWithOwner(
+                        (int)cameraId, ownerToken, future, out var completion)
+                    : PXR_CameraImagePlugin.UPxr_CreateCameraCaptureSessionComplete(
+                        (int)cameraId, future, out completion);
+                if (completeResult != PxrResult.SUCCESS)
+                {
+                    return completeResult;
+                }
+
+                if ((waitResult.CancellationRequested || token.IsCancellationRequested) &&
+                    completion.futureResult == PxrResult.SUCCESS)
+                {
+                    if (useOwnerToken)
+                    {
+                        PXR_CameraImagePlugin.UPxr_DestroyCameraCaptureSessionWithOwner(
+                            (int)cameraId, ownerToken);
+                    }
+                    else
+                    {
+                        PXR_CameraImagePlugin.UPxr_DestroyCameraCaptureSession((int)cameraId);
+                    }
+                    return PxrResult.ERROR_RUNTIME_FAILURE;
+                }
+
+                return completion.futureResult;
             }, token);
         }
 
@@ -380,6 +471,13 @@ namespace ByteDance.PICO.XR
         {
             return PXR_CameraImagePlugin.UPxr_DestroyCameraDevice((int)cameraId);
         }
+
+        public static PxrResult DestroyCameraDevice(XrCameraIdPICO cameraId, ulong ownerToken)
+        {
+            return PXR_CameraImagePlugin.UPxr_DestroyCameraDeviceWithOwner(
+                (int)cameraId, ownerToken);
+        }
+
         /// <summary>
         /// Destroys the active camera capture session for the specified camera.
         /// </summary>
@@ -388,6 +486,13 @@ namespace ByteDance.PICO.XR
         public static PxrResult DestroyCameraCaptureSession(XrCameraIdPICO cameraId)
         {
             return PXR_CameraImagePlugin.UPxr_DestroyCameraCaptureSession((int)cameraId);
+        }
+
+        public static PxrResult DestroyCameraCaptureSession(
+            XrCameraIdPICO cameraId, ulong ownerToken)
+        {
+            return PXR_CameraImagePlugin.UPxr_DestroyCameraCaptureSessionWithOwner(
+                (int)cameraId, ownerToken);
         }
 
         /// <summary>

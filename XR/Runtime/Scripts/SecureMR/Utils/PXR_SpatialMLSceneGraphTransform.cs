@@ -14,7 +14,12 @@ namespace ByteDance.PICO.SecureMR
 
         public static Quaternion UnityToSpatialEngineRotationQuaternion(Quaternion unityRotation)
         {
-            return UnityToSpatialEngineRotation * unityRotation;
+            return UnityToSpatialEngineRotation * unityRotation * Quaternion.Inverse(UnityToSpatialEngineRotation);
+        }
+
+        public static Quaternion UnityToSpatialEngineLocalTransformRotation(Quaternion unityRotation)
+        {
+            return unityRotation * UnityToSpatialEngineRotation;
         }
 
         public static Quaternion UnityEulerToSpatialEngineRotation(Vector3 unityEulerAngles)
@@ -27,9 +32,8 @@ namespace ByteDance.PICO.SecureMR
             Quaternion unityRotation,
             Vector3 unityScale)
         {
-            var position = UnityToSpatialEnginePosition(unityPosition);
-            var rotation = UnityToSpatialEngineRotationQuaternion(unityRotation);
-            return Matrix4x4.TRS(position, rotation, unityScale);
+            var rotation = UnityToSpatialEngineLocalTransformRotation(unityRotation);
+            return Matrix4x4.TRS(unityPosition, rotation, unityScale);
         }
     }
 }

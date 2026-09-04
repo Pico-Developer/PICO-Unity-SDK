@@ -114,6 +114,9 @@ namespace ByteDance.PICO.Spatial.Stage
         public static extern bool Pmp_StopHandTracking();
 
         [DllImport(MS_STAGE_DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void Pmp_SetSpatialAdapterSpatialMode(int mode);
+
+        [DllImport(MS_STAGE_DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern int Pmp_GetHandTrackingSupported();
 
         [DllImport(MS_STAGE_DLL, CallingConvention = CallingConvention.Cdecl)]

@@ -54,7 +54,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : Spatial camera defines the size of your world in shared space. ";
         const int k_SectionPriority = 1;
-        static string spatialCameraPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/Spatial Camera For Volume Space.prefab";
+        static string spatialCameraPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/Spatial Camera For Volume Space.prefab";
         static string spatialCameraName = $"{PXR_Utils.BuildingBlock} {k_Id}";
         public static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
@@ -128,7 +128,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : Spatial camera defines the size of your world in full stage mode. ";
         const int k_SectionPriority = 2;
-        static string spatialCameraPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/Spatial Camera For Stage Space.prefab";
+        static string spatialCameraPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/Spatial Camera For Stage Space.prefab";
         static string spatialCameraName = $"{PXR_Utils.BuildingBlock} {k_Id}";
         public static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
@@ -202,7 +202,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " :  ";
         const int k_SectionPriority = 3;
-        static string cameraEffectPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/CameraEffect.prefab";
+        static string cameraEffectPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/CameraEffect.prefab";
         static string cameraEffectName = $"{PXR_Utils.BuildingBlock} {k_Id}";
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 

@@ -11,6 +11,13 @@ using UnityEngine;
 
 namespace ByteDance.PICO.SecureMR.Editor
 {
+    internal enum SpatialMLPipelineZooOverwritePolicy
+    {
+        Prompt,
+        Fail,
+        Replace
+    }
+
     public sealed class SpatialMLPipelineZooImporterWindow : EditorWindow
     {
         private const string DefaultUrl = "https://huggingface.co/picoxr/face-mediapipe-pipeline/resolve/main/face-mediapipe-pipeline.zip?download=true";
@@ -107,28 +114,48 @@ namespace ByteDance.PICO.SecureMR.Editor
 
         public static SpatialMLPipelineZooAsset ImportFromFolder(string packageFolder, string destinationRoot)
         {
-            if (!File.Exists(Path.Combine(packageFolder, "manifest.json")))
-            {
-                throw new FileNotFoundException("SpatialML package folder must contain manifest.json", packageFolder);
-            }
+            return ImportFromFolder(
+                packageFolder,
+                destinationRoot,
+                SpatialMLPipelineZooOverwritePolicy.Prompt);
+        }
 
-            var manifestPath = Path.Combine(packageFolder, "manifest.json");
-            var manifest = JsonUtility.FromJson<Manifest>(File.ReadAllText(manifestPath));
-            var rawPackageName = string.IsNullOrEmpty(manifest.id) ? new DirectoryInfo(packageFolder).Name : manifest.id;
-            var packageName = SanitizePackageName(rawPackageName);
+        internal static SpatialMLPipelineZooAsset ImportFromFolder(
+            string packageFolder,
+            string destinationRoot,
+            SpatialMLPipelineZooOverwritePolicy overwritePolicy)
+        {
+            // Validate the entire package before inspecting or replacing the destination.
+            var validatedPackage = SpatialMLPipelineZooPackageValidator.Validate(packageFolder);
+            var packageName = SanitizePackageName(validatedPackage.PackageId);
             var assetFolder = CombineAssetPath(destinationRoot, packageName);
             var absoluteAssetFolder = Path.GetFullPath(ToAbsolutePath(assetFolder));
             EnsurePathUnderAssets(absoluteAssetFolder, "Resolved import destination is outside the Unity project's Assets folder.");
 
             if (Directory.Exists(absoluteAssetFolder))
             {
-                if (!EditorUtility.DisplayDialog(
-                        "SpatialML Import",
-                        $"Folder already exists and will be replaced:\n{assetFolder}\n\nContinue?",
-                        "Replace",
-                        "Cancel"))
+                switch (overwritePolicy)
                 {
-                    throw new OperationCanceledException("Import cancelled by user.");
+                    case SpatialMLPipelineZooOverwritePolicy.Prompt:
+                        if (!EditorUtility.DisplayDialog(
+                                "SpatialML Import",
+                                $"Folder already exists and will be replaced:\n{assetFolder}\n\nContinue?",
+                                "Replace",
+                                "Cancel"))
+                        {
+                            throw new OperationCanceledException("Import cancelled by user.");
+                        }
+                        break;
+                    case SpatialMLPipelineZooOverwritePolicy.Fail:
+                        throw new IOException(
+                            $"SpatialML package destination already exists: {assetFolder}");
+                    case SpatialMLPipelineZooOverwritePolicy.Replace:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(
+                            nameof(overwritePolicy),
+                            overwritePolicy,
+                            "Unsupported SpatialML package overwrite policy.");
                 }
 
                 if (!AssetDatabase.DeleteAsset(assetFolder) && Directory.Exists(absoluteAssetFolder))
@@ -140,47 +167,43 @@ namespace ByteDance.PICO.SecureMR.Editor
             Directory.CreateDirectory(absoluteAssetFolder);
 
             var copied = new Dictionary<string, string>();
-            foreach (var file in Directory.GetFiles(packageFolder, "*", SearchOption.AllDirectories))
+            foreach (var file in validatedPackage.Files)
             {
-                if (ShouldSkip(file)) continue;
-                var relative = NormalizePath(Path.GetRelativePath(packageFolder, file));
-                if (!IsSafeRelativePath(relative)) throw new InvalidDataException($"Invalid package file path '{relative}'.");
-                var targetRelative = NeedsBytesExtension(relative) ? relative + ".bytes" : relative;
+                var targetRelative = file.IsBinary ? file.PackagePath + ".bytes" : file.PackagePath;
                 var targetAssetPath = CombineAssetPath(assetFolder, targetRelative);
                 var targetPath = Path.GetFullPath(ToAbsolutePath(targetAssetPath));
-                EnsurePathUnderDirectory(targetPath, absoluteAssetFolder, $"Blocked path traversal attempt: '{relative}'.");
+                EnsurePathUnderDirectory(
+                    targetPath,
+                    absoluteAssetFolder,
+                    $"Blocked path traversal attempt: '{file.PackagePath}'.");
                 Directory.CreateDirectory(Path.GetDirectoryName(targetPath));
-                File.Copy(file, targetPath, true);
-                copied[relative] = targetAssetPath;
+                File.Copy(file.SourcePath, targetPath, true);
+                copied[file.PackagePath] = targetAssetPath;
             }
 
             AssetDatabase.Refresh();
 
             var packageAsset = ScriptableObject.CreateInstance<SpatialMLPipelineZooAsset>();
-            packageAsset.packageId = manifest.id;
+            packageAsset.packageId = validatedPackage.PackageId;
             packageAsset.manifestJson = AssetDatabase.LoadAssetAtPath<TextAsset>(copied["manifest.json"]);
-            if (manifest.model != null && !string.IsNullOrEmpty(manifest.model.json_path) && copied.TryGetValue(manifest.model.json_path, out var modelJsonPath))
-            {
-                packageAsset.modelJson = AssetDatabase.LoadAssetAtPath<TextAsset>(modelJsonPath);
-            }
 
-            foreach (var pipeline in manifest.pipelines ?? Array.Empty<PipelineSpec>())
+            foreach (var pipeline in validatedPackage.Pipelines)
             {
-                if (string.IsNullOrEmpty(pipeline.path) || !copied.TryGetValue(pipeline.path, out var jsonPath)) continue;
+                var jsonPath = copied[pipeline.Path];
                 packageAsset.pipelineJsonAssets.Add(new SpatialMLPipelineZooAsset.PipelineJsonAsset
                 {
-                    id = pipeline.id,
-                    packagePath = pipeline.path,
+                    id = pipeline.Id,
+                    packagePath = pipeline.Path,
                     json = AssetDatabase.LoadAssetAtPath<TextAsset>(jsonPath)
                 });
             }
 
-            foreach (var pair in copied.Where(p => NeedsBytesExtension(p.Key)))
+            foreach (var file in validatedPackage.Files.Where(item => item.IsBinary))
             {
                 packageAsset.binaryAssets.Add(new SpatialMLPipelineZooAsset.BinaryAsset
                 {
-                    packagePath = pair.Key,
-                    asset = AssetDatabase.LoadAssetAtPath<TextAsset>(pair.Value)
+                    packagePath = file.PackagePath,
+                    asset = AssetDatabase.LoadAssetAtPath<TextAsset>(copied[file.PackagePath])
                 });
             }
 
@@ -191,6 +214,82 @@ namespace ByteDance.PICO.SecureMR.Editor
             AssetDatabase.Refresh();
             Debug.Log($"Imported SpatialML pipeline zoo package '{packageName}' to {assetFolder}");
             return packageAsset;
+        }
+
+        internal static string VerifyImportedPackage(
+            SpatialMLPipelineZooAsset packageAsset,
+            string packageFolder)
+        {
+            if (packageAsset == null)
+            {
+                throw new InvalidDataException(
+                    "SpatialML package import did not create a SpatialMLPipelineZooAsset.");
+            }
+
+            var packageAssetPath = AssetDatabase.GetAssetPath(packageAsset);
+            if (string.IsNullOrEmpty(packageAssetPath) ||
+                AssetDatabase.LoadAssetAtPath<SpatialMLPipelineZooAsset>(packageAssetPath) == null)
+            {
+                throw new InvalidDataException(
+                    "SpatialML package import did not persist its SpatialMLPipelineZooAsset.");
+            }
+
+            if (packageAsset.manifestJson == null)
+            {
+                throw new InvalidDataException(
+                    "Imported SpatialMLPipelineZooAsset does not reference manifest.json.");
+            }
+
+            foreach (var pipeline in packageAsset.pipelineJsonAssets)
+            {
+                if (pipeline == null || pipeline.json == null)
+                {
+                    throw new InvalidDataException(
+                        "Imported SpatialMLPipelineZooAsset contains a missing pipeline JSON asset.");
+                }
+            }
+
+            var importedBinaryPaths = new HashSet<string>(
+                packageAsset.binaryAssets
+                    .Where(item => item != null && !string.IsNullOrEmpty(item.packagePath))
+                    .Select(item => NormalizePath(item.packagePath)),
+                StringComparer.Ordinal);
+
+            foreach (var binary in packageAsset.binaryAssets)
+            {
+                if (binary == null || binary.asset == null)
+                {
+                    throw new InvalidDataException(
+                        "Imported SpatialMLPipelineZooAsset contains a missing binary asset.");
+                }
+
+                var binaryAssetPath = AssetDatabase.GetAssetPath(binary.asset);
+                if (string.IsNullOrEmpty(binaryAssetPath) ||
+                    !binaryAssetPath.EndsWith(".bytes", StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(ToAbsolutePath(binaryAssetPath)))
+                {
+                    throw new InvalidDataException(
+                        $"Imported binary asset '{binary.packagePath}' was not generated as a .bytes file.");
+                }
+            }
+
+            foreach (var file in Directory.GetFiles(packageFolder, "*", SearchOption.AllDirectories))
+            {
+                if (ShouldSkip(file))
+                {
+                    continue;
+                }
+
+                var relativePath = NormalizePath(Path.GetRelativePath(packageFolder, file));
+                if (NeedsBytesExtension(relativePath) &&
+                    !importedBinaryPaths.Contains(relativePath))
+                {
+                    throw new InvalidDataException(
+                        $"Imported SpatialMLPipelineZooAsset is missing binary asset '{relativePath}'.");
+                }
+            }
+
+            return packageAssetPath;
         }
 
         private static string FindPackageRoot(string extractedRoot)
@@ -260,28 +359,6 @@ namespace ByteDance.PICO.SecureMR.Editor
         private static string NormalizePath(string path) => path.Replace('\\', '/');
         private static string ToAbsolutePath(string assetPath) => Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), assetPath));
 
-        [Serializable]
-        private sealed class Manifest
-        {
-            public string id;
-            public ModelSpec model;
-            public PipelineSpec[] pipelines;
-        }
-
-        [Serializable]
-        private sealed class ModelSpec
-        {
-            public string bin_path;
-            public string json_path;
-            public string extra_json_path;
-        }
-
-        [Serializable]
-        private sealed class PipelineSpec
-        {
-            public string id;
-            public string path;
-        }
     }
 }
 #endif

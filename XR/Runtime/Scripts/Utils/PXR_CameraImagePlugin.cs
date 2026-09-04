@@ -1,10 +1,13 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 namespace ByteDance.PICO.XR
 {
     public static class PXR_CameraImagePlugin
     {
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void Pxr_FreeCameraData(IntPtr data);
+
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern PxrResult Pxr_ReleaseCameraImageData(int deviceId, ulong imageId);
 
@@ -32,7 +35,13 @@ namespace ByteDance.PICO.XR
         public static extern PxrResult Pxr_DestroyCameraDevice(int deviceId);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern PxrResult Pxr_DestroyCameraDeviceWithOwner(int deviceId, ulong ownerToken);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern PxrResult Pxr_DestroyCameraCaptureSession(int deviceId);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern PxrResult Pxr_DestroyCameraCaptureSessionWithOwner(int deviceId, ulong ownerToken);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern PxrResult Pxr_CreateCameraCaptureSession(int deviceId, int width, int height,
@@ -42,14 +51,35 @@ namespace ByteDance.PICO.XR
             XrCameraModelPICO model, out ulong future);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern PxrResult Pxr_CreateCameraCaptureSessionWithOwner(int deviceId, ulong ownerToken,
+            int width, int height, XrCameraImageFpsPICO fps,
+            XrCameraImageFormatPICO format,
+            XrCameraDataTransferTypePICO transferType,
+            XrCameraModelPICO model, out ulong future);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern PxrResult Pxr_CreateCameraCaptureSessionComplete(int deviceId, ulong future,
+            ref XrCreateCameraCaptureSessionCompletion completion);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern PxrResult Pxr_CreateCameraCaptureSessionCompleteWithOwner(
+            int deviceId, ulong ownerToken, ulong future,
             ref XrCreateCameraCaptureSessionCompletion completion);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern PxrResult Pxr_CreateCameraDevice(int deviceId, out ulong future);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern PxrResult Pxr_CreateCameraDeviceWithOwner(
+            int deviceId, ulong ownerToken, out ulong future);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern PxrResult Pxr_CreateCameraDeviceComplete(int deviceId, ulong future,
+            ref XrCreateCameraDeviceCompletion completion);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern PxrResult Pxr_CreateCameraDeviceCompleteWithOwner(
+            int deviceId, ulong ownerToken, ulong future,
             ref XrCreateCameraDeviceCompletion completion);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
@@ -138,6 +168,16 @@ namespace ByteDance.PICO.XR
             return PxrResult.ERROR_RUNTIME_FAILURE;
 #endif
         }
+
+        public static PxrResult UPxr_DestroyCameraDeviceWithOwner(int deviceId, ulong ownerToken)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Pxr_DestroyCameraDeviceWithOwner(deviceId, ownerToken);
+#else
+            return PxrResult.ERROR_RUNTIME_FAILURE;
+#endif
+        }
+
         public static PxrResult UPxr_DestroyCameraCaptureSession(int deviceId)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -147,6 +187,16 @@ namespace ByteDance.PICO.XR
             return PxrResult.ERROR_RUNTIME_FAILURE;
 #endif
         }
+
+        public static PxrResult UPxr_DestroyCameraCaptureSessionWithOwner(int deviceId, ulong ownerToken)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Pxr_DestroyCameraCaptureSessionWithOwner(deviceId, ownerToken);
+#else
+            return PxrResult.ERROR_RUNTIME_FAILURE;
+#endif
+        }
+
         public static PxrResult UPxr_CreateCameraCaptureSession(int deviceId,int width, int height, XrCameraImageFpsPICO fps,
             XrCameraImageFormatPICO format,
             XrCameraDataTransferTypePICO transferType,
@@ -162,6 +212,22 @@ namespace ByteDance.PICO.XR
             return PxrResult.ERROR_RUNTIME_FAILURE;
 #endif
         }
+
+        public static PxrResult UPxr_CreateCameraCaptureSessionWithOwner(
+            int deviceId, ulong ownerToken, int width, int height, XrCameraImageFpsPICO fps,
+            XrCameraImageFormatPICO format,
+            XrCameraDataTransferTypePICO transferType,
+            XrCameraModelPICO model, out ulong future)
+        {
+            future = UInt64.MinValue;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Pxr_CreateCameraCaptureSessionWithOwner(
+                deviceId, ownerToken, width, height, fps, format, transferType, model, out future);
+#else
+            return PxrResult.ERROR_RUNTIME_FAILURE;
+#endif
+        }
+
         public static PxrResult UPxr_CreateCameraCaptureSessionComplete(int deviceId,ulong future,out XrCreateCameraCaptureSessionCompletion completion)
         {
             completion = new XrCreateCameraCaptureSessionCompletion();
@@ -173,6 +239,20 @@ namespace ByteDance.PICO.XR
             return PxrResult.ERROR_RUNTIME_FAILURE;
 #endif
         }
+
+        public static PxrResult UPxr_CreateCameraCaptureSessionCompleteWithOwner(
+            int deviceId, ulong ownerToken, ulong future,
+            out XrCreateCameraCaptureSessionCompletion completion)
+        {
+            completion = new XrCreateCameraCaptureSessionCompletion();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Pxr_CreateCameraCaptureSessionCompleteWithOwner(
+                deviceId, ownerToken, future, ref completion);
+#else
+            return PxrResult.ERROR_RUNTIME_FAILURE;
+#endif
+        }
+
         public static PxrResult UPxr_CreateCameraDevice(int deviceId, out ulong future)
         {
             future = UInt64.MinValue;
@@ -183,6 +263,18 @@ namespace ByteDance.PICO.XR
             return PxrResult.ERROR_RUNTIME_FAILURE;
 #endif
         }
+
+        public static PxrResult UPxr_CreateCameraDeviceWithOwner(
+            int deviceId, ulong ownerToken, out ulong future)
+        {
+            future = UInt64.MinValue;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Pxr_CreateCameraDeviceWithOwner(deviceId, ownerToken, out future);
+#else
+            return PxrResult.ERROR_RUNTIME_FAILURE;
+#endif
+        }
+
         public static PxrResult UPxr_CreateCameraDeviceComplete(int deviceId,ulong future,out XrCreateCameraDeviceCompletion completion)
         {
             completion = new XrCreateCameraDeviceCompletion();
@@ -194,24 +286,50 @@ namespace ByteDance.PICO.XR
             return PxrResult.ERROR_RUNTIME_FAILURE;
 #endif
         }
+
+        public static PxrResult UPxr_CreateCameraDeviceCompleteWithOwner(
+            int deviceId, ulong ownerToken, ulong future,
+            out XrCreateCameraDeviceCompletion completion)
+        {
+            completion = new XrCreateCameraDeviceCompletion();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return Pxr_CreateCameraDeviceCompleteWithOwner(
+                deviceId, ownerToken, future, ref completion);
+#else
+            return PxrResult.ERROR_RUNTIME_FAILURE;
+#endif
+        }
         
         public static PxrResult UPxr_GetAvailableCameras( out XrCameraIdPICO[] capabilityValues)
         {
             capabilityValues = null;
             uint count = 0;
             IntPtr camerasHandle = IntPtr.Zero;
-            PxrResult ret = Pxr_GetAvailableCameras(ref count, ref camerasHandle);
-            if (ret == PxrResult.SUCCESS)
+            try
             {
-                long[] values = new long[count];
-                capabilityValues = new XrCameraIdPICO[count];
-                Marshal.Copy(camerasHandle, values, 0, (int)count);
-                for (int i = 0; i < count; i++)
+                PxrResult ret = Pxr_GetAvailableCameras(ref count, ref camerasHandle);
+                if (ret == PxrResult.SUCCESS)
                 {
-                    capabilityValues[i] = (XrCameraIdPICO)values[i];
+                    long[] values = new long[count];
+                    capabilityValues = new XrCameraIdPICO[count];
+                    if (count > 0)
+                    {
+                        Marshal.Copy(camerasHandle, values, 0, (int)count);
+                    }
+                    for (int i = 0; i < count; i++)
+                    {
+                        capabilityValues[i] = (XrCameraIdPICO)values[i];
+                    }
+                }
+                return ret;
+            }
+            finally
+            {
+                if (camerasHandle != IntPtr.Zero)
+                {
+                    Pxr_FreeCameraData(camerasHandle);
                 }
             }
-            return ret;
         }
 
         public static PxrResult UPxr_GetCameraCapability(XrCameraIdPICO cameraId,XrCameraCapabilityTypePICO capabilityType,out int[] capabilityValues)
@@ -219,21 +337,38 @@ namespace ByteDance.PICO.XR
             capabilityValues = null;
             uint count = 0;
             IntPtr capabilityHandle = IntPtr.Zero;
-            PxrResult ret = Pxr_GetCameraCapability((int)cameraId, capabilityType, ref count, ref capabilityHandle);
-            if (ret == PxrResult.SUCCESS)
+            try
             {
-                if (capabilityType==XrCameraCapabilityTypePICO.XR_CAMERA_CAPABILITY_TYPE_IMAGE_RESOLUTION_PICO)
+                PxrResult ret = Pxr_GetCameraCapability(
+                    (int)cameraId, capabilityType, ref count, ref capabilityHandle);
+                if (ret == PxrResult.SUCCESS)
                 {
-                    capabilityValues = new int[count*2];
-                    Marshal.Copy(capabilityHandle, capabilityValues, 0, (int)count*2);
+                    if (capabilityType==XrCameraCapabilityTypePICO.XR_CAMERA_CAPABILITY_TYPE_IMAGE_RESOLUTION_PICO)
+                    {
+                        capabilityValues = new int[count*2];
+                        if (count > 0)
+                        {
+                            Marshal.Copy(capabilityHandle, capabilityValues, 0, (int)count*2);
+                        }
+                    }
+                    else
+                    {
+                        capabilityValues = new int[count];
+                        if (count > 0)
+                        {
+                            Marshal.Copy(capabilityHandle, capabilityValues, 0, (int)count);
+                        }
+                    }
                 }
-                else
+                return ret;
+            }
+            finally
+            {
+                if (capabilityHandle != IntPtr.Zero)
                 {
-                    capabilityValues = new int[count];
-                    Marshal.Copy(capabilityHandle, capabilityValues, 0, (int)count);
+                    Pxr_FreeCameraData(capabilityHandle);
                 }
             }
-            return ret;
         }
         
         public static PxrResult UPxr_GetCameraProperties(XrCameraIdPICO cameraId,XrCameraPropertyTypePICO propertyType, ref int propertyValue)
@@ -247,19 +382,32 @@ namespace ByteDance.PICO.XR
             propertyTypes = null;
             uint count = 0;
             IntPtr typesHandle = IntPtr.Zero;
-            PxrResult ret = Pxr_GetCameraCapabilityAvailable((int)cameraId, ref count, ref typesHandle);
-            if (ret == PxrResult.SUCCESS)
+            try
             {
-                int[] typeArray = new int[count];
-                Marshal.Copy(typesHandle, typeArray, 0, (int)count);
-                propertyTypes = new XrCameraCapabilityTypePICO[count];
-                for (int i = 0; i < count; i++)
+                PxrResult ret = Pxr_GetCameraCapabilityAvailable(
+                    (int)cameraId, ref count, ref typesHandle);
+                if (ret == PxrResult.SUCCESS)
                 {
-                    propertyTypes[i] = (XrCameraCapabilityTypePICO)typeArray[i];
+                    int[] typeArray = new int[count];
+                    if (count > 0)
+                    {
+                        Marshal.Copy(typesHandle, typeArray, 0, (int)count);
+                    }
+                    propertyTypes = new XrCameraCapabilityTypePICO[count];
+                    for (int i = 0; i < count; i++)
+                    {
+                        propertyTypes[i] = (XrCameraCapabilityTypePICO)typeArray[i];
+                    }
                 }
-
+                return ret;
             }
-            return ret;
+            finally
+            {
+                if (typesHandle != IntPtr.Zero)
+                {
+                    Pxr_FreeCameraData(typesHandle);
+                }
+            }
         }
 
         public static PxrResult UPxr_GetCameraPropertyTypesAvailable(XrCameraIdPICO cameraId,out XrCameraPropertyTypePICO[] propertyTypes)
@@ -267,19 +415,32 @@ namespace ByteDance.PICO.XR
             propertyTypes = null;
             uint count = 0;
             IntPtr typesHandle = IntPtr.Zero;
-            PxrResult ret = Pxr_GetCameraPropertyTypesAvailable((int)cameraId, ref count, ref typesHandle);
-            if (ret == PxrResult.SUCCESS)
+            try
             {
-                int[] typeArray = new int[count];
-                Marshal.Copy(typesHandle, typeArray, 0, (int)count);
-                propertyTypes = new XrCameraPropertyTypePICO[count];
-                for (int i = 0; i < count; i++)
+                PxrResult ret = Pxr_GetCameraPropertyTypesAvailable(
+                    (int)cameraId, ref count, ref typesHandle);
+                if (ret == PxrResult.SUCCESS)
                 {
-                    propertyTypes[i] = (XrCameraPropertyTypePICO)typeArray[i];
+                    int[] typeArray = new int[count];
+                    if (count > 0)
+                    {
+                        Marshal.Copy(typesHandle, typeArray, 0, (int)count);
+                    }
+                    propertyTypes = new XrCameraPropertyTypePICO[count];
+                    for (int i = 0; i < count; i++)
+                    {
+                        propertyTypes[i] = (XrCameraPropertyTypePICO)typeArray[i];
+                    }
                 }
-
+                return ret;
             }
-            return ret;
+            finally
+            {
+                if (typesHandle != IntPtr.Zero)
+                {
+                    Pxr_FreeCameraData(typesHandle);
+                }
+            }
         }
         
 
@@ -289,23 +450,36 @@ namespace ByteDance.PICO.XR
             uint configCount = 0;
             IntPtr configHandle = IntPtr.Zero;
             PxrResult ret = PxrResult.Unknown;
-#if UNITY_ANDROID && !UNITY_EDITOR
-            ret = Pxr_GetCameraPropertyTypesAvailable((int)cameraId, ref configCount, ref configHandle);
-#endif
-            if (ret == PxrResult.SUCCESS)
+            try
             {
-                typeArray = new int[configCount];
-                Marshal.Copy(configHandle, typeArray, 0, (int)configCount);
-                XrCameraPropertyTypePICO[] retArray = new XrCameraPropertyTypePICO[configCount];
-                for (int i = 0; i < configCount; i++)
+#if UNITY_ANDROID && !UNITY_EDITOR
+                ret = Pxr_GetCameraPropertyTypesAvailable((int)cameraId, ref configCount, ref configHandle);
+#endif
+                if (ret == PxrResult.SUCCESS)
                 {
-                    retArray[i] = (XrCameraPropertyTypePICO)typeArray[i];
+                    typeArray = new int[configCount];
+                    if (configCount > 0)
+                    {
+                        Marshal.Copy(configHandle, typeArray, 0, (int)configCount);
+                    }
+                    XrCameraPropertyTypePICO[] retArray = new XrCameraPropertyTypePICO[configCount];
+                    for (int i = 0; i < configCount; i++)
+                    {
+                        retArray[i] = (XrCameraPropertyTypePICO)typeArray[i];
+                    }
+
+                    return retArray;
                 }
 
-                return retArray;
+                return null;
             }
-
-            return null;
+            finally
+            {
+                if (configHandle != IntPtr.Zero)
+                {
+                    Pxr_FreeCameraData(configHandle);
+                }
+            }
         }
     }
 

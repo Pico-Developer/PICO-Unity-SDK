@@ -7,6 +7,38 @@ using ByteDance.PICO.XR;
 
 namespace ByteDance.PICO.SecureMR
 {
+    public class SpatialContainerConfiguration
+    {
+        public int containerWidth { get; }
+        public int containerHeight { get; }
+        public int containerDepth { get; }
+        public bool isPortal { get; }
+
+        public SpatialContainerConfiguration(
+            int containerWidth,
+            int containerHeight,
+            int containerDepth,
+            bool isPortal = false)
+        {
+            this.containerWidth = containerWidth;
+            this.containerHeight = containerHeight;
+            this.containerDepth = containerDepth;
+            this.isPortal = isPortal;
+
+            if (isPortal && (containerWidth <= 0 || containerHeight <= 0 || containerDepth <= 0))
+            {
+                throw new ArgumentException(
+                    "A portal requires a volumetric SpatialML container with positive width, height, and depth.",
+                    nameof(isPortal));
+            }
+        }
+
+        internal int GetBackendDepth()
+        {
+            return isPortal ? -containerDepth : containerDepth;
+        }
+    }
+
     public class Provider
     {
         private readonly ISecureMRBackend backend;
@@ -19,11 +51,24 @@ namespace ByteDance.PICO.SecureMR
         }
 
         public Provider(int width, int height, int containerWidth, int containerHeight, int containerDepth)
+            : this(
+                width,
+                height,
+                new SpatialContainerConfiguration(containerWidth, containerHeight, containerDepth))
         {
+        }
+
+        public Provider(int width, int height, SpatialContainerConfiguration containerConfiguration)
+        {
+            if (containerConfiguration == null)
+            {
+                throw new ArgumentNullException(nameof(containerConfiguration));
+            }
+
             backend = SecureMRBackendRouter.Current;
             if (backend is SecureMRBackendSpatial spatialBackend)
             {
-                providerHandle = spatialBackend.CreateProvider(width, height, containerWidth, containerHeight, containerDepth);
+                providerHandle = spatialBackend.CreateProvider(width, height, containerConfiguration);
                 return;
             }
 

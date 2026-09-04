@@ -51,7 +51,12 @@ namespace ByteDance.PICO.Debugger
 
         public TextMeshProUGUI localQuaternion;
 
+        public TextMeshProUGUI scaleX;
+        public TextMeshProUGUI scaleY;
+        public TextMeshProUGUI scaleZ;
+
         public Toggle toggle;
+        private bool isOnCameraChain = false;
 
         private PXR_PicoDebuggerSO config;
         private bool isShowPanel = false;
@@ -78,25 +83,80 @@ namespace ByteDance.PICO.Debugger
         {
             isShowPanel = state;
             panel.SetActive(state);
+            if (state)
+            {
+                EnsureScrollLayout();
+                if (panel.transform is RectTransform panelRT)
+                {
+                    LayoutRebuilder.ForceRebuildLayoutImmediate(panelRT);
+                    // The ScrollRect Content has no ContentSizeFitter of its own;
+                    // sync its height to the Panel so the ScrollRect knows the
+                    // real scrollable area.
+                    var contentRT = panel.transform.parent as RectTransform;
+                    if (contentRT != null)
+                    {
+                        contentRT.sizeDelta = new Vector2(contentRT.sizeDelta.x, panelRT.rect.height);
+                    }
+                }
+            }
+        }
+
+        // The prefab's Panel is missing ContentSizeFitter and has
+        // childForceExpandHeight=true, which locks the panel to a fixed
+        // 500px and squeezes all rows into that height. Fix it at runtime
+        // so the Panel sizes to fit its children (bug 7342957103).
+        private void EnsureScrollLayout()
+        {
+            var panelCSF = panel.GetComponent<ContentSizeFitter>();
+            if (panelCSF == null)
+                panelCSF = panel.AddComponent<ContentSizeFitter>();
+            panelCSF.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            var panelVLG = panel.GetComponent<VerticalLayoutGroup>();
+            if (panelVLG != null)
+                panelVLG.childForceExpandHeight = false;
         }
         public void SetGameObject(GameObject obj)
         {
             go = obj;
             targetName.text = $"{go.name}";
             toggle.isOn = go.activeSelf;
+            // Disable the PICOSwitch toggle when the target is the main camera
+            // or one of its ancestors, preventing users from turning off nodes
+            // the debugger camera depends on (bug 7342935089).
+            isOnCameraChain = PXR_UIController.IsCameraAncestor(go);
+            if(!isOnCameraChain){
+                toggle.isOn = go.activeSelf;
+            }else{
+                toggle.isOn = false;
+            }   
+            toggle.enabled = !isOnCameraChain;
+            toggle.interactable = !isOnCameraChain;
             TogglePanel(true);
             UpdatePanel();
         }
         public void RefreshTarget()
         {
+            if (go == null)
+            {
+                TogglePanel(false);
+                return;
+            }
             targetName.text = $"{go.name}";
-            toggle.isOn = go.activeSelf;
+            isOnCameraChain = PXR_UIController.IsCameraAncestor(go);
+            if(!isOnCameraChain){
+                toggle.isOn = go.activeSelf;
+            }else{
+                toggle.isOn = false;
+            }   
+            toggle.enabled = !isOnCameraChain;
+            toggle.interactable = !isOnCameraChain;
             TogglePanel(true);
             UpdatePanel();
         }
         public void ToggleGO(Toggle toggle)
         {
-            if (go != null)
+            if (go != null && !isOnCameraChain)
             {
                 go.SetActive(toggle.isOn);
             }
@@ -149,6 +209,22 @@ namespace ByteDance.PICO.Debugger
         {
             go.transform.localEulerAngles += config.localRotationStep * v * Vector3.forward;
         }
+        // Scale: Unity's only writable scale is transform.localScale
+        // (transform.lossyScale / world scale is read-only). The ScaleItem in
+        // the Inspector panel drives these handlers so X/Y/Z step the object's
+        // transform scale. Step size comes from worldScaleStep in settings.
+        public void ChangeScaleX(float v)
+        {
+            go.transform.localScale += config.worldScaleStep * v * Vector3.right;
+        }
+        public void ChangeScaleY(float v)
+        {
+            go.transform.localScale += config.worldScaleStep * v * Vector3.up;
+        }
+        public void ChangeScaleZ(float v)
+        {
+            go.transform.localScale += config.worldScaleStep * v * Vector3.forward;
+        }
         public void UpdatePanel()
         {
             worldPositionX.text = $"{go.transform.position.x}";
@@ -169,6 +245,10 @@ namespace ByteDance.PICO.Debugger
 
             worldQuaternion.text = $"{go.transform.rotation}";
             localQuaternion.text = $"{go.transform.localRotation}";
+
+            scaleX.text = $"{go.transform.localScale.x}";
+            scaleY.text = $"{go.transform.localScale.y}";
+            scaleZ.text = $"{go.transform.localScale.z}";
         }
 
     }

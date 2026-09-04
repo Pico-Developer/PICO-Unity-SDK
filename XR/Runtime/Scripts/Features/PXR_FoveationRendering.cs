@@ -53,6 +53,13 @@ namespace ByteDance.PICO.XR
         /// </returns>
         public static bool SetFoveationLevel(FoveationLevel level, bool isETFR)
         {
+#if UNITY_6000_0_OR_NEWER
+            if (PXR_SrpFoveationRendering.TrySetFoveationLevel(level, isETFR))
+            {
+                return true;
+            }
+#endif
+
             if (isETFR)
             {
                 return PXR_Plugin.Render.UPxr_SetEyeFoveationLevel(level);
@@ -75,6 +82,14 @@ namespace ByteDance.PICO.XR
         /// </returns>
         public static FoveationLevel GetFoveationLevel()
         {
+#if UNITY_6000_0_OR_NEWER
+            FoveationLevel level;
+            if (PXR_SrpFoveationRendering.TryGetFoveationLevel(out level))
+            {
+                return level;
+            }
+#endif
+
             return PXR_Plugin.Render.UPxr_GetFoveationLevel();
         }
 

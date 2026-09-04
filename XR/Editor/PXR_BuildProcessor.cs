@@ -361,7 +361,7 @@ namespace ByteDance.PICO.XR.Editor
             return;
 #endif
             doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pvr.app.type"}},new Dictionary<string, string>{{"value","vr"}});
-            doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pxr.sdk.version_code"}},new Dictionary<string, string>{{"value", "6000"}});
+            doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pxr.sdk.version_code"}},new Dictionary<string, string>{{"value", "6011"}});
             doc.InsertAttributeInTargetTag(applicationTagPath,null, new Dictionary<string, string>() {{"requestLegacyExternalStorage", "true"}});
 #if ENABLE_PICO_OPENXR_SDK
             doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","use.pxr.sdk"}},new Dictionary<string, string>{{"value", "2"}});
@@ -575,6 +575,10 @@ namespace ByteDance.PICO.XR.Editor
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_plane_detection" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().planeDetection ? "1" : "0" } });
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_environment_depth" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().environmentDepth ? "1" : "0" } });
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_light_estimation" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().lightEstimation ? "1" : "0" } });
+            bool objectTrackingEnabled = PXR_ProjectSetting.GetProjectConfig().objectTracking;
+            doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_dynamic_object_tracking" } }, new Dictionary<string, string> { { "value", objectTrackingEnabled ? "1" : "0" } });
+            doc.RemoveAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_keyboard_passthrough" } });
+            doc.RemoveAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_environment_passthrough_preference" } });
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "pvr.SuperResolution" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().superResolution ? "1" : "0" } });
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "pvr.NormalSharpening" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().normalSharpening ? "1" : "0" } });
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "pvr.QualitySharpening" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().qualitySharpening ? "1" : "0" } });
@@ -594,7 +598,7 @@ namespace ByteDance.PICO.XR.Editor
                 doc.CreateElementInTag(manifestTagPath, usesPermissionTagName, new Dictionary<string, string> { { "name", "com.pico.xrpermission.ETFR" } });
             }
 
-            if (PXR_ProjectSetting.GetProjectConfig().sceneCapture || PXR_ProjectSetting.GetProjectConfig().spatialMesh || PXR_ProjectSetting.GetProjectConfig().planeDetection || PXR_ProjectSetting.GetProjectConfig().environmentDepth ||  PXR_ProjectSetting.GetProjectConfig().lightEstimation)
+            if (PXR_ProjectSetting.GetProjectConfig().sceneCapture || PXR_ProjectSetting.GetProjectConfig().spatialMesh || PXR_ProjectSetting.GetProjectConfig().planeDetection || PXR_ProjectSetting.GetProjectConfig().environmentDepth || PXR_ProjectSetting.GetProjectConfig().lightEstimation || PXR_ProjectSetting.GetProjectConfig().objectTracking || PXR_ProjectSetting.GetProjectConfig().keyboardPassthrough)
             {
                 doc.CreateElementInTag(manifestTagPath, usesPermissionTagName,
                     new Dictionary<string, string> { { "name", "com.picovr.permission.SPATIAL_DATA" } });

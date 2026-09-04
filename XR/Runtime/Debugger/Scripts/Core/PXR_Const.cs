@@ -16,9 +16,9 @@ namespace ByteDance.PICO.Debugger
     {
         public static string sdkPackageName = "Packages/com.bytedance.pico.xr/";
         public static string sdkRootName = "com.bytedance.pico.xr/";
-        public static string debuggerPath = "Assets/Debugger/";
-        public static string uiPath = "Assets/Debugger/UI/";
-        public static string prefabsPath = "Assets/Debugger/Prefabs/";
+        public static string debuggerPath = "Debugger/";
+        public static string uiPath = "Debugger/UI/";
+        public static string prefabsPath = "Debugger/Prefabs/";
         public static string resourcePath = "Assets/Resources/";
 
         public static string inputActionName =  "PICODebuggerActions.inputactions";
@@ -28,7 +28,7 @@ namespace ByteDance.PICO.Debugger
         public static string soName = "PICODebuggerPanel.uxml";
 
         
-        public static string version = "0.3.1";
+        public static string version = "0.4.2";
         // Action
         public const string debuggerStartButton = "DebuggerStartButton";
         public const string timerControllerButton = "TimerControllerButton";

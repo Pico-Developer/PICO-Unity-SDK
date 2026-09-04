@@ -50,6 +50,7 @@ namespace ByteDance.PICO.Debugger
                     var localPositionStepSlider = rootVisualElement.Q<Slider>("LocalPositionStep");
                     var worldRotationStepSlider = rootVisualElement.Q<Slider>("WorldRotationStep");
                     var localRotationStepSlider = rootVisualElement.Q<Slider>("LocalRotationStep");
+                    var worldScaleStepSlider = rootVisualElement.Q<Slider>("WorldScaleStep");
 
                     Debug.Assert(isOpenToggle != null, $"{isOpenToggle} is Null");
                     Debug.Assert(inputActionAsset != null, $"{inputActionAsset} is Null");
@@ -59,6 +60,7 @@ namespace ByteDance.PICO.Debugger
                     Debug.Assert(localPositionStepSlider != null, $"{localPositionStepSlider} is Null");
                     Debug.Assert(worldRotationStepSlider != null, $"{worldRotationStepSlider} is Null");
                     Debug.Assert(localRotationStepSlider != null, $"{localRotationStepSlider} is Null");
+                    Debug.Assert(worldScaleStepSlider != null, $"{worldScaleStepSlider} is Null");
 
                     isOpenToggle.value = config.isOpen;
                     isOpenToggle.RegisterValueChangedCallback(evt =>
@@ -78,15 +80,42 @@ namespace ByteDance.PICO.Debugger
                                 );
                                 if (userConfirmed)
                                 {
-                                    // For Unity 2022+ and unity6+
-                                    var path = "Window/TextMeshPro/Import TMP Essential Resources";
-                                    try
+                                    // Try to locate the TMP Essential Resources unitypackage.
+                                    // Unity ships it inside the package folder; the exact location
+                                    // varies between Unity versions, so search by asset name.
+                                    string tmpPackagePath = null;
+                                    string[] guids = AssetDatabase.FindAssets("TMP Essential Resources");
+                                    foreach (var guid in guids)
                                     {
-                                        EditorApplication.ExecuteMenuItem(path);
+                                        var p = AssetDatabase.GUIDToAssetPath(guid);
+                                        if (p.EndsWith(".unitypackage", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            tmpPackagePath = p;
+                                            break;
+                                        }
                                     }
-                                    catch
+
+                                    if (!string.IsNullOrEmpty(tmpPackagePath))
                                     {
-                                        Debug.LogError($"Failed to import TextMesh Pro Essential Resources. Please import them manually via {path}.");
+                                        // Use AssetDatabase.ImportPackage with callbacks so we can
+                                        // detect whether the user cancelled the import in the
+                                        // "Import Unity Package" window. ExecuteMenuItem is
+                                        // fire-and-forget and cannot detect cancellation.
+                                        // interactive: true keeps the import dialog so the user
+                                        // can confirm or cancel, which is required for the
+                                        // importPackageCancelled callback to fire.
+                                        AssetDatabase.importPackageCompleted += OnTMPImpPackageCompleted;
+                                        AssetDatabase.importPackageCancelled += OnTMPImpPackageCancelled;
+                                        AssetDatabase.ImportPackage(tmpPackagePath, true);
+                                    }
+                                    else
+                                    {
+                                        // Could not locate the TMP Essential Resources .unitypackage.
+                                        // Roll back Enable and ask the user to import TMP manually.
+                                        config.isOpen = false;
+                                        isOpenToggle.value = false;
+                                        EditorUtility.SetDirty(config);
+                                        Debug.LogWarning("Unable to locate TextMesh Pro Essential Resources automatically. Please import TMP Essential Resources manually via Window > TextMeshPro > Import TMP Essential Resources, then enable PICO Debugger again.");
                                     }
                                 }
                                 else
@@ -160,11 +189,60 @@ namespace ByteDance.PICO.Debugger
                         EditorUtility.SetDirty(config);
                     });
 
+                    worldScaleStepSlider.value = config.worldScaleStep;
+                    worldScaleStepSlider.RegisterValueChangedCallback(evt =>
+                    {
+                        config.worldScaleStep = evt.newValue;
+                        EditorUtility.SetDirty(config);
+                    });
+
                     AssetDatabase.Refresh();
                 },
                 keywords = new HashSet<string>(new[] { "PICO", "Debugger Tool" })
             };
             return provider;
+        }
+
+        /// <summary>
+        /// Called by AssetDatabase when a package import is completed.
+        /// If TMP was successfully imported, "Assets/TextMesh Pro" should now exist,
+        /// so we just clean up the callback and keep Enable checked.
+        /// </summary>
+        private static void OnTMPImpPackageCompleted(string packageName)
+        {
+            AssetDatabase.importPackageCompleted -= OnTMPImpPackageCompleted;
+            AssetDatabase.importPackageCancelled -= OnTMPImpPackageCancelled;
+
+            if (!Directory.Exists("Assets/TextMesh Pro"))
+            {
+                // Import completed but the expected folder is still missing.
+                // Roll back the Enable toggle to reflect reality.
+                var config = PXR_PicoDebuggerSO.Instance;
+                config.isOpen = false;
+                EditorUtility.SetDirty(config);
+                AssetDatabase.SaveAssets();
+                Debug.LogWarning("TextMesh Pro import completed, but 'Assets/TextMesh Pro' was not found. Enable has been rolled back.");
+                // Refresh the Settings window so the Toggle visually reflects the rollback.
+                EditorApplication.delayCall += SettingsService.NotifySettingsProviderChanged;
+            }
+        }
+
+        /// <summary>
+        /// Called by AssetDatabase when the user cancels a package import.
+        /// Roll back the Enable toggle since TMP was not imported.
+        /// </summary>
+        private static void OnTMPImpPackageCancelled(string packageName)
+        {
+            AssetDatabase.importPackageCompleted -= OnTMPImpPackageCompleted;
+            AssetDatabase.importPackageCancelled -= OnTMPImpPackageCancelled;
+
+            var config = PXR_PicoDebuggerSO.Instance;
+            config.isOpen = false;
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssets();
+            Debug.Log("User canceled the import of TextMesh Pro Essential Resources. Enable has been rolled back.");
+            // Refresh the Settings window so the Toggle visually reflects the rollback.
+            EditorApplication.delayCall += SettingsService.NotifySettingsProviderChanged;
         }
     }
 }

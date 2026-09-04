@@ -12,6 +12,7 @@ PICO Technology Co., Ltd.
 using UnityEngine;
 using UnityEngine.XR;
 using System;
+using Unity.XR.CoreUtils;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -35,6 +36,7 @@ namespace ByteDance.PICO.Debugger
         
         public Transform leftController;
         public Transform rightController;
+        private XROrigin cachedXROrigin;
         public static PXR_DebuggerInputManager Instance { get; private set; }
         private void Awake()
         {
@@ -122,13 +124,53 @@ namespace ByteDance.PICO.Debugger
         private void OnLeftControllerPosition(InputAction.CallbackContext context)
         {
             Vector3 position = context.ReadValue<Vector3>();
+            position.y += GetCameraYOffset();
             leftController.position = position;
         }
-        
+
         private void OnRightControllerPosition(InputAction.CallbackContext context)
         {
             Vector3 position = context.ReadValue<Vector3>();
+            position.y += GetCameraYOffset();
             rightController.position = position;
+        }
+
+        // The controller position actions report poses in tracking space. In Floor
+        // tracking-origin mode the rig's floor offset already lifts those poses to
+        // world height, so tools line up. In non-Floor (Device/Eye) mode the rig
+        // applies a CameraYOffset to lift the camera instead, and that offset is NOT
+        // baked into the action values, so the tools sit too low by exactly that
+        // amount. Add it back here to keep tools aligned with the user's view.
+        private float GetCameraYOffset()
+        {
+            var origin = GetActiveXROrigin();
+            if (origin == null) return 0f;
+            if ((origin.CurrentTrackingOriginMode & TrackingOriginModeFlags.Floor) != 0) return 0f;
+            return origin.CameraYOffset;
+        }
+
+        // Cache the resolved XROrigin so the per-frame Update / position callbacks
+        // do not run FindObjectsOfType every time; re-resolve only if it is lost.
+        private XROrigin GetActiveXROrigin()
+        {
+            if (cachedXROrigin != null && cachedXROrigin.gameObject.activeInHierarchy)
+            {
+                return cachedXROrigin;
+            }
+            cachedXROrigin = FindActiveXROrigin();
+            return cachedXROrigin;
+        }
+
+        private XROrigin FindActiveXROrigin()
+        {
+            foreach (var origin in FindObjectsOfType<XROrigin>())
+            {
+                if (origin.gameObject.activeInHierarchy)
+                {
+                    return origin;
+                }
+            }
+            return null;
         }
         
         private void OnDisable()
@@ -148,14 +190,19 @@ namespace ByteDance.PICO.Debugger
         }
         void Update()
         {
+            float yOffset = GetCameraYOffset();
             if (leftControllerPositionAction.enabled && isTracingLeftController)
             {
-                leftController.SetPositionAndRotation(leftControllerPositionAction.ReadValue<Vector3>(), leftControllerRotationAction.ReadValue<Quaternion>());
+                Vector3 position = leftControllerPositionAction.ReadValue<Vector3>();
+                position.y += yOffset;
+                leftController.SetPositionAndRotation(position, leftControllerRotationAction.ReadValue<Quaternion>());
             }
-            
+
             if (rightControllerPositionAction.enabled && isTracingRightController)
             {
-                rightController.SetPositionAndRotation(rightControllerPositionAction.ReadValue<Vector3>(), rightControllerRotationAction.ReadValue<Quaternion>());
+                Vector3 position = rightControllerPositionAction.ReadValue<Vector3>();
+                position.y += yOffset;
+                rightController.SetPositionAndRotation(position, rightControllerRotationAction.ReadValue<Quaternion>());
             }
         }
     }

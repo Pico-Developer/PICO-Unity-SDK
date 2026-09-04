@@ -50,6 +50,7 @@ public class PXR_PicoDebuggerSO : ScriptableObject
     [Range(0,10)]public float localPositionStep = 1f;
     [Range(0,90)]public float worldRotationStep = 1f;
     [Range(0,90)]public float localRotationStep = 1f;
+    [Range(0,10)]public float worldScaleStep = 1f;
     // public LauncherButton rulerClearButton;
     internal static void GetAsset<T>(out T asset, string name) where T : PXR_PicoDebuggerSO
     {

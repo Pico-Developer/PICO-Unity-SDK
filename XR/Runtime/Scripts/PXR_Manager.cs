@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/*******************************************************************************
 Copyright © 2015-2022 PICO Technology Co., Ltd.All rights reserved.  
 
 NOTICE：All information contained herein is, and remains the property of 
@@ -170,6 +170,10 @@ namespace ByteDance.PICO.XR
         public static event Action<List<PxrPlaneData>> PlaneDetectionDataUpdated;
         public static event Action LightEstimationUpdated;
         public static event Action SemiAutoCaptureDataUpdated;
+        public static event Action DynamicObjectDataUpdated;
+        public static event Action<List<PxrDynamicObjectData>> DynamicObjectTrackingDataUpdated;
+        public static event Action<PxrKeyboardPassthroughLevel> KeyboardPassthroughStateChanged;
+        public static event Action<PxrPicoKeyboardPassthroughLevel> PicoKeyboardPassthroughStateChanged;
         public static event Action<bool> EnableVideoSeeThroughAction;
         public static Action<PxrVstStatus> VstDisplayStatusChanged;
 
@@ -313,6 +317,9 @@ namespace ByteDance.PICO.XR
 #if UNITY_EDITOR
             Application.targetFrameRate = 72;
 #endif
+#if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
+            StartCoroutine(ApplySrpFoveationAfterDisplayStarts());
+#endif
 #if ENABLE_PICO_OPENXR_SDK
 #else
             PXR_Plugin.Controller.UPxr_SetControllerDelay();
@@ -323,6 +330,16 @@ namespace ByteDance.PICO.XR
             }
 #endif
         }
+
+#if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
+        private IEnumerator ApplySrpFoveationAfterDisplayStarts()
+        {
+            while (!PXR_SrpFoveationRendering.TryApplyProjectSettings())
+            {
+                yield return null;
+            }
+        }
+#endif
 
         void Update()
         {
@@ -504,6 +521,16 @@ namespace ByteDance.PICO.XR
                         }
                     }
 
+                    if (providerHandle ==
+                        PXR_Plugin.MixedReality.DynamicObjectTrackingProviderHandle)
+                    {
+                        DynamicObjectDataUpdated?.Invoke();
+                        if (DynamicObjectTrackingDataUpdated != null)
+                        {
+                            StartCoroutine(QueryDynamicObjectData());
+                        }
+                    }
+
                     break;
                 }
 
@@ -530,6 +557,18 @@ namespace ByteDance.PICO.XR
                     }
                 }
                     break;
+                case XrStructureType.XR_TYPE_EVENT_DATA_KEYBOARD_PASSTHROUGH_STATE_CHANGED_PICO:
+                {
+                    var level = (PxrKeyboardPassthroughLevel)BitConverter.ToInt32(eventDB.data, 16);
+                    KeyboardPassthroughStateChanged?.Invoke(level);
+                    break;
+                }
+                case XrStructureType.XR_TYPE_EVENT_DATA_PICO_KEYBOARD_PASSTHROUGH_STATE_CHANGED_PICO:
+                {
+                    var level = (PxrPicoKeyboardPassthroughLevel)BitConverter.ToInt32(eventDB.data, 16);
+                    PicoKeyboardPassthroughStateChanged?.Invoke(level);
+                    break;
+                }
             }
         }
 
@@ -576,6 +615,22 @@ namespace ByteDance.PICO.XR
             if (result == PxrResult.SUCCESS)
             {
                 PlaneDetectionDataUpdated?.Invoke(meshInfos);
+            }
+        }
+
+        private IEnumerator QueryDynamicObjectData()
+        {
+            var task = PXR_MixedReality.QueryDynamicObjectDataAsync();
+            yield return new WaitUntil(() => task.IsCompleted);
+
+            var (result, objects) = task.Result;
+            if (result == PxrResult.SUCCESS)
+            {
+                DynamicObjectTrackingDataUpdated?.Invoke(objects);
+            }
+            else
+            {
+                Debug.LogError($"PXR_Manager QueryDynamicObjectData failed:{result}");
             }
         }
 

@@ -601,8 +601,6 @@ namespace ByteDance.PICO.XR
                 {
                     return false;
                 }
-#elif PICO_MS_SDK
-                return SpatialNativeApi.Pmp_RemoveAnchor(anchorId) == 0;
 #else
                 return false;
 #endif

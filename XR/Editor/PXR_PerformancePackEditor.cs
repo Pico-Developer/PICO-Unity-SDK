@@ -10,6 +10,9 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 using UnityEngine.XR;
+#if URP
+using UnityEngine.Rendering.Universal;
+#endif
 using ByteDance.PICO.XR;
 #if ENABLE_PICO_OPENXR_SDK
 using ByteDance.PICO.OpenXR;
@@ -21,6 +24,7 @@ namespace ByteDance.PICO.XR.Editor
     {
         private const string EditorPrefsKey = "ByteDance.PICO.PerformancePack.Config";
         private const string PerformancePackAssetPath = "Assets/Resources/PXR_PerformancePackRuntimeConfig.asset";
+        private const string LegacyPerformancePackAssetPath = "Assets/Resources/PXR_PerformancePackConfig.asset";
         private const float NarrowWidthThreshold = 840f;
 
         private static readonly Color TokenPrimary = new Color(0.00f, 0.40f, 1.00f);
@@ -65,9 +69,6 @@ namespace ByteDance.PICO.XR.Editor
             public List<string> foveations;
             public string recommendedFoveation;
 
-            public List<string> antiAliasingModes;
-            public string recommendedAntiAliasing;
-
             public bool superResolutionSupported;
             public bool superResolutionRecommended;
             public bool hdrSupported;
@@ -87,40 +88,36 @@ namespace ByteDance.PICO.XR.Editor
                 DeviceProfile.ProjectSwan,
                 new DeviceTemplate
                 {
-                    displayName = "Project Swan",
+                    displayName = "PICO Space Pro",
                     recommendedRenderScale = 1.15f,
                     refreshRates = new List<string> { "Default", "72Hz", "90Hz" },
                     recommendedRefreshRate = "90Hz",
                     foveations = new List<string>(FoveationOptions),
                     recommendedFoveation = BuildFoveationOption(FoveatedRenderingMode.EyeTrackedFoveatedRendering, FoveationLevel.Med),
-                    antiAliasingModes = new List<string> { "Default" },
-                    recommendedAntiAliasing = "Default",
                     superResolutionSupported = true,
-                    superResolutionRecommended = true,
+                    superResolutionRecommended = false,
                     hdrSupported = true,
-                    hdrRecommended = true,
+                    hdrRecommended = false,
                     adaptiveResolutionSupported = true,
-                    adaptiveResolutionRecommended = true,
+                    adaptiveResolutionRecommended = false,
                 }
             },
             {
                 DeviceProfile.PICO4Series,
                 new DeviceTemplate
                 {
-                    displayName = "PICO4 Series",
+                    displayName = "PICO 4 Ultra",
                     recommendedRenderScale = 1.0f,
                     refreshRates = new List<string> { "Default", "72Hz", "90Hz" },
                     recommendedRefreshRate = "72Hz",
                     foveations = new List<string>(FixedFoveationOptions),
                     recommendedFoveation = BuildFoveationOption(FoveatedRenderingMode.FixedFoveatedRendering, FoveationLevel.None),
-                    antiAliasingModes = new List<string> { "Default" },
-                    recommendedAntiAliasing = "Default",
                     superResolutionSupported = true,
                     superResolutionRecommended = false,
                     hdrSupported = true,
                     hdrRecommended = false,
                     adaptiveResolutionSupported = true,
-                    adaptiveResolutionRecommended = true,
+                    adaptiveResolutionRecommended = false,
                 }
             },
             {
@@ -133,8 +130,6 @@ namespace ByteDance.PICO.XR.Editor
                     recommendedRefreshRate = "Default",
                     foveations = new List<string>(FixedFoveationOptions),
                     recommendedFoveation = BuildFoveationOption(FoveatedRenderingMode.FixedFoveatedRendering, FoveationLevel.None),
-                    antiAliasingModes = new List<string> { "Default" },
-                    recommendedAntiAliasing = "Default",
                     superResolutionSupported = true,
                     superResolutionRecommended = false,
                     hdrSupported = true,
@@ -156,6 +151,7 @@ namespace ByteDance.PICO.XR.Editor
         private static bool _isDirty;
         private static bool _isNarrowLayout;
         private static Action _requestRebuild;
+        private static Action _requestStatusRefresh;
 
         private static PXR_PerformancePackDeviceConfig ActiveDeviceConfig
         {
@@ -170,7 +166,7 @@ namespace ByteDance.PICO.XR.Editor
             return _config.GetDeviceConfig(ToRuntimeProfile(profile));
         }
 
-        // [MenuItem("PICO/Performance Pack", false, 1)] // Temporarily hidden
+        [MenuItem("PICO/Performance Pack", false, 1)] // Temporarily hidden
         private static void OpenWindow()
         {
             var window = EditorWindow.GetWindow<PerformancePackWindow>();
@@ -204,6 +200,11 @@ namespace ByteDance.PICO.XR.Editor
                 {
                     _requestRebuild = null;
                 }
+
+                if (_requestStatusRefresh != null)
+                {
+                    _requestStatusRefresh = null;
+                }
             }
         }
 
@@ -212,10 +213,16 @@ namespace ByteDance.PICO.XR.Editor
             _requestRebuild?.Invoke();
         }
 
+        private static void RequestStatusRefresh()
+        {
+            _requestStatusRefresh?.Invoke();
+        }
+
         private static void EnsureLoaded()
         {
             if (_config != null) return;
             bool createdAsset = false;
+            RemoveLegacyEditorOnlyConfigAsset();
             _config = LoadFromProjectAsset();
             if (_config == null)
             {
@@ -229,6 +236,12 @@ namespace ByteDance.PICO.XR.Editor
             }
             _isDirty = false;
             NormalizeConfigForSelection(autoConfigure: false);
+        }
+
+        private static void RemoveLegacyEditorOnlyConfigAsset()
+        {
+            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(LegacyPerformancePackAssetPath) == null) return;
+            AssetDatabase.DeleteAsset(LegacyPerformancePackAssetPath);
         }
 
         private static void MigrateLegacyChineseValues(PXR_PerformancePackConfig config)
@@ -423,8 +436,68 @@ namespace ByteDance.PICO.XR.Editor
             if (asset != null)
             {
                 asset.EnsureDeviceConfigs();
+                asset = RepairRuntimeAssetScriptReferenceIfNeeded(asset);
+                asset.EnsureDeviceConfigs();
             }
             return asset;
+        }
+
+        private static PXR_PerformancePackConfig RepairRuntimeAssetScriptReferenceIfNeeded(PXR_PerformancePackConfig asset)
+        {
+            if (asset == null) return null;
+            if (HasRuntimeAssetScriptReference(asset)) return asset;
+
+            var repaired = ScriptableObject.CreateInstance<PXR_PerformancePackConfig>();
+            CopyConfig(asset, repaired);
+
+            if (!AssetDatabase.DeleteAsset(PerformancePackAssetPath))
+            {
+                return asset;
+            }
+
+            AssetDatabase.CreateAsset(repaired, PerformancePackAssetPath);
+            AssetDatabase.SaveAssets();
+            return repaired;
+        }
+
+        private static bool HasRuntimeAssetScriptReference(PXR_PerformancePackConfig asset)
+        {
+            var serializedObject = new SerializedObject(asset);
+            var scriptProperty = serializedObject.FindProperty("m_Script");
+            return scriptProperty != null && scriptProperty.objectReferenceValue != null;
+        }
+
+        private static void CopyConfig(PXR_PerformancePackConfig source, PXR_PerformancePackConfig target)
+        {
+            if (source == null || target == null) return;
+
+            source.EnsureDeviceConfigs();
+            target.deviceProjectSwan = source.deviceProjectSwan;
+            target.devicePico4Series = source.devicePico4Series;
+            target.deviceOtherDevice = source.deviceOtherDevice;
+            target.editingProfile = source.editingProfile;
+            target.projectSwan = CopyDeviceConfig(source.projectSwan);
+            target.pico4Series = CopyDeviceConfig(source.pico4Series);
+            target.otherDevice = CopyDeviceConfig(source.otherDevice);
+            target.presetName = source.presetName;
+            target.updatedAtUnixMs = source.updatedAtUnixMs;
+        }
+
+        private static PXR_PerformancePackDeviceConfig CopyDeviceConfig(PXR_PerformancePackDeviceConfig source)
+        {
+            if (source == null) return new PXR_PerformancePackDeviceConfig();
+
+            return new PXR_PerformancePackDeviceConfig
+            {
+                renderScale = source.renderScale,
+                refreshRate = source.refreshRate,
+                foveation = source.foveation,
+                superResolution = source.superResolution,
+                hdr = source.hdr,
+                adaptiveResolution = source.adaptiveResolution,
+                sharpeningMode = source.sharpeningMode,
+                sharpeningEnhance = source.sharpeningEnhance,
+            };
         }
 
         private static PXR_PerformancePackConfig LoadFromEditorPrefs()
@@ -456,6 +529,7 @@ namespace ByteDance.PICO.XR.Editor
         private static void MarkDirty()
         {
             _isDirty = true;
+            RequestStatusRefresh();
         }
 
         private static IEnumerable<DeviceProfile> GetSelectedProfiles()
@@ -525,8 +599,9 @@ namespace ByteDance.PICO.XR.Editor
                 ActiveDeviceConfig.renderScale = template.recommendedRenderScale;
                 ActiveDeviceConfig.refreshRate = template.recommendedRefreshRate;
                 ActiveDeviceConfig.foveation = template.recommendedFoveation;
-                ActiveDeviceConfig.antiAliasing = template.recommendedAntiAliasing;
                 ActiveDeviceConfig.superResolution = template.superResolutionRecommended;
+                ActiveDeviceConfig.sharpeningMode = SharpeningMode.None;
+                ActiveDeviceConfig.sharpeningEnhance = SharpeningEnhance.None;
                 ActiveDeviceConfig.hdr = template.hdrRecommended;
                 ActiveDeviceConfig.adaptiveResolution = template.adaptiveResolutionRecommended;
                 MarkDirty();
@@ -548,11 +623,6 @@ namespace ByteDance.PICO.XR.Editor
                 ActiveDeviceConfig.foveation = template.recommendedFoveation;
                 MarkDirty();
             }
-            if (!IsValueSupportedAcrossSelection(templateSelector: t => t.antiAliasingModes, value: ActiveDeviceConfig.antiAliasing))
-            {
-                ActiveDeviceConfig.antiAliasing = template.recommendedAntiAliasing;
-                MarkDirty();
-            }
 
             if (!IsToggleSupportedAcrossSelection(t => t.superResolutionSupported) && ActiveDeviceConfig.superResolution)
             {
@@ -568,6 +638,19 @@ namespace ByteDance.PICO.XR.Editor
             {
                 ActiveDeviceConfig.adaptiveResolution = false;
                 MarkDirty();
+            }
+            if (ActiveDeviceConfig.superResolution && ActiveDeviceConfig.sharpeningMode != SharpeningMode.None)
+            {
+                ActiveDeviceConfig.sharpeningMode = SharpeningMode.None;
+                MarkDirty();
+            }
+            if (ActiveDeviceConfig.superResolution || ActiveDeviceConfig.sharpeningMode == SharpeningMode.None)
+            {
+                if (ActiveDeviceConfig.sharpeningEnhance != SharpeningEnhance.None)
+                {
+                    ActiveDeviceConfig.sharpeningEnhance = SharpeningEnhance.None;
+                    MarkDirty();
+                }
             }
         }
 
@@ -777,6 +860,8 @@ namespace ByteDance.PICO.XR.Editor
                 string dirtyText = _isDirty ? "Status: Pending apply" : "Status: Saved";
                 statusText.text = deviceText + " · " + presetText + " · " + dirtyText;
             }
+
+            _requestStatusRefresh = RefreshStatusText;
 
             void RenderActiveTab()
             {
@@ -1004,20 +1089,13 @@ namespace ByteDance.PICO.XR.Editor
             bool savedAssets = false;
             bool updatedScene = false;
 
+            ApplyRenderScaleToAndroidRenderPipelineAsset(lines, ref savedAssets);
+            ApplyHdrToAndroidRenderPipelineAsset(lines, ref savedAssets);
             ApplyToPXRSettings(lines, ref savedAssets);
             ApplyToProjectSettingAndManagers(lines, ref savedAssets, ref updatedScene);
 #if ENABLE_PICO_OPENXR_SDK
             ApplyToOpenXRProjectSetting(lines, ref savedAssets);
 #endif
-
-            if (ActiveDeviceConfig.hdr)
-            {
-                lines.Add("HDR: On (no SDK mapping found; kept in preset only)");
-            }
-            else
-            {
-                lines.Add("HDR: Off (no SDK mapping found; kept in preset only)");
-            }
 
             if (savedAssets)
             {
@@ -1064,13 +1142,11 @@ namespace ByteDance.PICO.XR.Editor
         private static void ApplyToProjectSettingAndManagers(List<string> lines, ref bool savedAssets, ref bool updatedScene)
         {
             var projectConfig = PXR_ProjectSetting.GetProjectConfig();
-            bool isRenderPipelineInUse = QualitySettings.renderPipeline != null || GraphicsSettings.defaultRenderPipeline != null;
 
             ApplyFoveationToProjectSetting(projectConfig);
             ApplyAdaptiveResolutionToProjectSetting(projectConfig);
             ApplySuperResolutionToProjectSetting(projectConfig);
             ApplySharpeningToProjectSetting(projectConfig);
-            ApplyMsaaToProjectSetting(projectConfig, isRenderPipelineInUse);
 
             EditorUtility.SetDirty(projectConfig);
             savedAssets = true;
@@ -1081,11 +1157,10 @@ namespace ByteDance.PICO.XR.Editor
                 var m = managers[i];
                 Undo.RecordObject(m, "Apply Performance Pack");
 
-                ApplyFoveationToManager(m, projectConfig);
+                ApplyFoveationToManager(m);
                 ApplyAdaptiveResolutionToManager(m);
                 ApplySuperResolutionToManager(m);
                 ApplySharpeningToManager(m);
-                ApplyMsaaToManager(m, projectConfig, isRenderPipelineInUse);
 
                 EditorUtility.SetDirty(m);
                 if (!Application.isPlaying && m.gameObject.scene.IsValid())
@@ -1099,8 +1174,131 @@ namespace ByteDance.PICO.XR.Editor
             lines.Add($"Foveated Rendering: {ActiveDeviceConfig.foveation}");
             lines.Add($"Adaptive Resolution: {(ActiveDeviceConfig.adaptiveResolution ? "On" : "Off")}");
             lines.Add($"Super Resolution: {(ActiveDeviceConfig.superResolution ? "On" : "Off")}");
-            lines.Add($"Anti-Aliasing: {ActiveDeviceConfig.antiAliasing}");
         }
+
+#if URP
+        private static void ApplyRenderScaleToAndroidRenderPipelineAsset(List<string> lines, ref bool savedAssets)
+        {
+            UniversalRenderPipelineAsset pipelineAsset = GetAndroidRenderPipelineAsset(out string error);
+            if (pipelineAsset == null)
+            {
+                lines.Add($"Render Scale: {error}");
+                return;
+            }
+
+            float scale = ClampRenderScale(ActiveDeviceConfig.renderScale);
+            if (Mathf.Abs(pipelineAsset.renderScale - scale) > 0.0001f)
+            {
+                Undo.RecordObject(pipelineAsset, "Apply Performance Pack Render Scale");
+                pipelineAsset.renderScale = scale;
+                EditorUtility.SetDirty(pipelineAsset);
+                savedAssets = true;
+            }
+
+            lines.Add($"Render Scale: {FormatRenderScale(pipelineAsset.renderScale)} ({AssetDatabase.GetAssetPath(pipelineAsset)})");
+        }
+
+        private static void ApplyHdrToAndroidRenderPipelineAsset(List<string> lines, ref bool savedAssets)
+        {
+            UniversalRenderPipelineAsset pipelineAsset = GetAndroidRenderPipelineAsset(out string error);
+            if (pipelineAsset == null)
+            {
+                lines.Add($"HDR: {error}");
+                return;
+            }
+
+            bool hdr = ActiveDeviceConfig.hdr;
+            if (pipelineAsset.supportsHDR != hdr)
+            {
+                Undo.RecordObject(pipelineAsset, "Apply Performance Pack HDR");
+                pipelineAsset.supportsHDR = hdr;
+                EditorUtility.SetDirty(pipelineAsset);
+                savedAssets = true;
+            }
+
+            lines.Add($"HDR: {(pipelineAsset.supportsHDR ? "On" : "Off")} ({AssetDatabase.GetAssetPath(pipelineAsset)})");
+        }
+
+        private static UniversalRenderPipelineAsset GetAndroidRenderPipelineAsset(out string error)
+        {
+            error = null;
+            UnityEngine.Object qualitySettingsAsset = null;
+            UnityEngine.Object[] qualitySettingsAssets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/QualitySettings.asset");
+            for (int i = 0; i < qualitySettingsAssets.Length; i++)
+            {
+                if (qualitySettingsAssets[i] != null)
+                {
+                    qualitySettingsAsset = qualitySettingsAssets[i];
+                    break;
+                }
+            }
+
+            if (qualitySettingsAsset == null)
+            {
+                error = "Android quality settings asset was not found.";
+                return null;
+            }
+
+            var serializedQualitySettings = new SerializedObject(qualitySettingsAsset);
+            SerializedProperty qualityLevels = serializedQualitySettings.FindProperty("m_QualitySettings");
+            int androidQualityIndex = GetAndroidDefaultQualityIndex(serializedQualitySettings);
+            if (qualityLevels == null || androidQualityIndex < 0 || androidQualityIndex >= qualityLevels.arraySize)
+            {
+                error = "Android default quality level was not found.";
+                return null;
+            }
+
+            SerializedProperty qualityLevel = qualityLevels.GetArrayElementAtIndex(androidQualityIndex);
+            UniversalRenderPipelineAsset pipelineAsset = qualityLevel
+                .FindPropertyRelative("customRenderPipeline")
+                ?.objectReferenceValue as UniversalRenderPipelineAsset;
+            if (pipelineAsset == null)
+            {
+                pipelineAsset = GraphicsSettings.defaultRenderPipeline as UniversalRenderPipelineAsset;
+            }
+
+            if (pipelineAsset == null)
+            {
+                error = "Android quality level does not use a URP asset.";
+            }
+
+            return pipelineAsset;
+        }
+
+        private static int GetAndroidDefaultQualityIndex(SerializedObject serializedQualitySettings)
+        {
+            SerializedProperty platformDefaults = serializedQualitySettings.FindProperty("m_PerPlatformDefaultQuality");
+            if (platformDefaults == null || !platformDefaults.isArray)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < platformDefaults.arraySize; i++)
+            {
+                SerializedProperty platformDefault = platformDefaults.GetArrayElementAtIndex(i);
+                SerializedProperty platform = platformDefault.FindPropertyRelative("first");
+                if (platform == null || !string.Equals(platform.stringValue, "Android", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                SerializedProperty qualityIndex = platformDefault.FindPropertyRelative("second");
+                return qualityIndex != null ? qualityIndex.intValue : -1;
+            }
+
+            return -1;
+        }
+#else
+        private static void ApplyRenderScaleToAndroidRenderPipelineAsset(List<string> lines, ref bool savedAssets)
+        {
+            lines.Add("Render Scale: Runtime-only because URP is not installed.");
+        }
+
+        private static void ApplyHdrToAndroidRenderPipelineAsset(List<string> lines, ref bool savedAssets)
+        {
+            lines.Add("HDR: Preset-only because URP is not installed.");
+        }
+#endif
 
         private static void ApplyFoveationToProjectSetting(PXR_ProjectSetting projectConfig)
         {
@@ -1112,6 +1310,7 @@ namespace ByteDance.PICO.XR.Editor
 
             bool enabled = level != FoveationLevel.None;
             projectConfig.enableETFR = enabled && mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering;
+            projectConfig.eyeTracking = projectConfig.enableETFR;
             projectConfig.foveationLevel = level;
             projectConfig.validationFFREnabled = enabled && mode == FoveatedRenderingMode.FixedFoveatedRendering;
             projectConfig.validationETFREnabled = enabled && mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering;
@@ -1141,13 +1340,9 @@ namespace ByteDance.PICO.XR.Editor
                 projectConfig.recommendSubsamping = true;
             }
 
-            if (mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering)
-            {
-                projectConfig.eyeTracking = true;
-            }
         }
 
-        private static void ApplyFoveationToManager(PXR_Manager manager, PXR_ProjectSetting projectConfig)
+        private static void ApplyFoveationToManager(PXR_Manager manager)
         {
             if (!TryParseFoveation(ActiveDeviceConfig.foveation, out FoveatedRenderingMode mode, out FoveationLevel level))
             {
@@ -1156,6 +1351,7 @@ namespace ByteDance.PICO.XR.Editor
             }
 
             manager.foveatedRenderingMode = mode;
+            manager.eyeTracking = mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering && level != FoveationLevel.None;
             if (mode == FoveatedRenderingMode.EyeTrackedFoveatedRendering)
             {
                 manager.eyeFoveationLevel = level;
@@ -1164,7 +1360,6 @@ namespace ByteDance.PICO.XR.Editor
                 {
                     manager.eyeFoveationLevel = FoveationLevel.None;
                 }
-                manager.eyeTracking = projectConfig.eyeTracking;
             }
             else
             {
@@ -1207,7 +1402,9 @@ namespace ByteDance.PICO.XR.Editor
         private static void ApplySharpeningToProjectSetting(PXR_ProjectSetting projectConfig)
         {
             SharpeningMode mode = ActiveDeviceConfig.superResolution ? SharpeningMode.None : ActiveDeviceConfig.sharpeningMode;
-            SharpeningEnhance enhance = SharpeningEnhance.None;
+            SharpeningEnhance enhance = mode == SharpeningMode.None
+                ? SharpeningEnhance.None
+                : ActiveDeviceConfig.sharpeningEnhance;
 
             projectConfig.normalSharpening = mode == SharpeningMode.Normal;
             projectConfig.qualitySharpening = mode == SharpeningMode.Quality;
@@ -1218,35 +1415,12 @@ namespace ByteDance.PICO.XR.Editor
         private static void ApplySharpeningToManager(PXR_Manager manager)
         {
             SharpeningMode mode = ActiveDeviceConfig.superResolution ? SharpeningMode.None : ActiveDeviceConfig.sharpeningMode;
-            SharpeningEnhance enhance = SharpeningEnhance.None;
+            SharpeningEnhance enhance = mode == SharpeningMode.None
+                ? SharpeningEnhance.None
+                : ActiveDeviceConfig.sharpeningEnhance;
 
             manager.sharpeningMode = mode;
             manager.sharpeningEnhance = enhance;
-        }
-
-        private static void ApplyMsaaToProjectSetting(PXR_ProjectSetting projectConfig, bool isRenderPipelineInUse)
-        {
-            if (isRenderPipelineInUse)
-            {
-                projectConfig.enableRecommendMSAA = false;
-                projectConfig.recommendMSAA = false;
-                return;
-            }
-
-            projectConfig.enableRecommendMSAA = true;
-            projectConfig.recommendMSAA = false;
-        }
-
-        private static void ApplyMsaaToManager(PXR_Manager manager, PXR_ProjectSetting projectConfig, bool isRenderPipelineInUse)
-        {
-            if (isRenderPipelineInUse)
-            {
-                manager.useRecommendedAntiAliasingLevel = false;
-                return;
-            }
-
-            manager.useRecommendedAntiAliasingLevel = projectConfig.enableRecommendMSAA;
-
         }
 
         private static bool TryParseRefreshRateHz(string text, out int hz)
@@ -1396,6 +1570,7 @@ namespace ByteDance.PICO.XR.Editor
                     if (v)
                     {
                         ActiveDeviceConfig.sharpeningMode = SharpeningMode.None;
+                        ActiveDeviceConfig.sharpeningEnhance = SharpeningEnhance.None;
                     }
                     MarkDirty();
                 },
@@ -1424,12 +1599,36 @@ namespace ByteDance.PICO.XR.Editor
                     if (Enum.TryParse(v, out SharpeningMode mode))
                     {
                         ActiveDeviceConfig.sharpeningMode = mode;
+                        if (mode == SharpeningMode.None)
+                        {
+                            ActiveDeviceConfig.sharpeningEnhance = SharpeningEnhance.None;
+                        }
                         MarkDirty();
                     }
                 }
             );
             sharpeningRow.SetEnabled(!ActiveDeviceConfig.superResolution);
             scroll.Add(sharpeningRow);
+
+            if (!ActiveDeviceConfig.superResolution && ActiveDeviceConfig.sharpeningMode != SharpeningMode.None)
+            {
+                var sharpeningEnhanceRow = BuildEnumRow(
+                    label: "Sharpening Enhance Mode",
+                    options: new List<string>(Enum.GetNames(typeof(SharpeningEnhance))),
+                    getValue: () => ActiveDeviceConfig.sharpeningEnhance.ToString(),
+                    setValue: v =>
+                    {
+                        if (Enum.TryParse(v, out SharpeningEnhance enhance))
+                        {
+                            ActiveDeviceConfig.sharpeningEnhance = enhance;
+                            MarkDirty();
+                        }
+                    }
+                );
+                sharpeningEnhanceRow.style.marginLeft = 16;
+                sharpeningEnhanceRow.SetEnabled(!ActiveDeviceConfig.superResolution);
+                scroll.Add(sharpeningEnhanceRow);
+            }
 
             var header2 = new Label("Performance Optimizations");
             header2.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -1533,22 +1732,6 @@ namespace ByteDance.PICO.XR.Editor
             legendCard.Add(BuildLegendRow(StatusLevel.Unsupported, "At least one selected device does not support the value."));
             legendCard.Add(BuildLegendRow(StatusLevel.Custom, "Differs from all selected devices' recommendations."));
 
-            var openSpecButton = new Button(() =>
-            {
-                string candidate = Path.Combine(Application.dataPath, "pico ui.md");
-                if (File.Exists(candidate))
-                {
-                    EditorUtility.RevealInFinder(candidate);
-                }
-                else
-                {
-                    EditorUtility.DisplayDialog("Performance Pack", "Cannot find pico ui.md under the project's Assets folder.", "OK");
-                }
-            })
-            { text = "Open Spec (Assets/pico ui.md)" };
-            openSpecButton.style.marginTop = 10;
-            scroll.Add(openSpecButton);
-
             return root;
         }
 
@@ -1592,9 +1775,12 @@ namespace ByteDance.PICO.XR.Editor
             row.style.marginTop = 6;
             box.Add(row);
 
-            var projectSwanToggle = new Toggle("Project Swan") { value = _config.deviceProjectSwan };
-            var pico4Toggle = new Toggle("PICO4 Series") { value = _config.devicePico4Series };
+            var projectSwanToggle = new Toggle("PICO Space Pro") { value = _config.deviceProjectSwan };
+            var pico4Toggle = new Toggle("PICO 4 Ultra") { value = _config.devicePico4Series };
             var otherToggle = new Toggle("Other Device") { value = _config.deviceOtherDevice };
+            ApplyDeviceToggleStyle(projectSwanToggle);
+            ApplyDeviceToggleStyle(pico4Toggle);
+            ApplyDeviceToggleStyle(otherToggle);
             projectSwanToggle.style.marginRight = 12;
             pico4Toggle.style.marginRight = 12;
 
@@ -1632,6 +1818,43 @@ namespace ByteDance.PICO.XR.Editor
             box.Add(helper);
 
             return box;
+        }
+
+        private static void ApplyDeviceToggleStyle(Toggle toggle)
+        {
+            toggle.style.color = new StyleColor(GetTextPrimaryColor());
+
+            var input = toggle.Q<VisualElement>(className: Toggle.inputUssClassName);
+            var checkmark = toggle.Q<VisualElement>(className: Toggle.checkmarkUssClassName);
+            if (input == null || checkmark == null) return;
+
+            void Refresh(bool selected)
+            {
+                Color border = selected
+                    ? TokenPrimary
+                    : EditorGUIUtility.isProSkin
+                        ? new Color(0.62f, 0.62f, 0.62f)
+                        : new Color(0.42f, 0.42f, 0.42f);
+                Color background = selected
+                    ? TokenPrimary
+                    : EditorGUIUtility.isProSkin
+                        ? new Color(0.08f, 0.08f, 0.08f)
+                        : Color.white;
+
+                input.style.backgroundColor = new StyleColor(background);
+                input.style.borderTopWidth = 1;
+                input.style.borderBottomWidth = 1;
+                input.style.borderLeftWidth = 1;
+                input.style.borderRightWidth = 1;
+                input.style.borderTopColor = new StyleColor(border);
+                input.style.borderBottomColor = new StyleColor(border);
+                input.style.borderLeftColor = new StyleColor(border);
+                input.style.borderRightColor = new StyleColor(border);
+                checkmark.style.unityBackgroundImageTintColor = new StyleColor(Color.white);
+            }
+
+            Refresh(toggle.value);
+            toggle.RegisterValueChangedCallback(evt => Refresh(evt.newValue));
         }
 
         private static VisualElement BuildEditingProfilePanel()
@@ -1756,19 +1979,6 @@ namespace ByteDance.PICO.XR.Editor
                 recommended: BuildRecommendedText(t => GetFoveationLevelLabel(GetFoveationLevelFromOption(t.recommendedFoveation))),
                 status: EvaluateDropdownStatus(GetFoveationLevelOptions, t => GetFoveationLevelLabel(GetFoveationLevelFromOption(t.recommendedFoveation)), GetFoveationLevelLabel(currentLevel))
             ));
-            grid.Add(BuildDropdownRow(
-                label: "Anti-Aliasing",
-                options: BuildUnionOptions(t => t.antiAliasingModes),
-                getValue: () => ActiveDeviceConfig.antiAliasing,
-                setValue: v =>
-                {
-                    ActiveDeviceConfig.antiAliasing = v;
-                    MarkDirty();
-                    NormalizeConfigForSelection(autoConfigure: false);
-                },
-                recommended: BuildRecommendedText(t => t.recommendedAntiAliasing),
-                status: EvaluateDropdownStatus(t => t.antiAliasingModes, t => t.recommendedAntiAliasing, ActiveDeviceConfig.antiAliasing)
-            ));
 
             return grid;
         }
@@ -1876,6 +2086,8 @@ namespace ByteDance.PICO.XR.Editor
 
                 var popup = new PopupField<string>(options, current);
                 popup.style.width = 180;
+                popup.style.marginLeft = 0;
+                popup.style.marginRight = 0;
                 popup.RegisterValueChangedCallback(evt =>
                 {
                     setValue(evt.newValue);
@@ -1921,33 +2133,12 @@ namespace ByteDance.PICO.XR.Editor
                 var field = new FloatField { value = current, formatString = "0.00", isDelayed = true };
                 field.style.width = 70;
 
-                bool updating = false;
-                slider.RegisterValueChangedCallback(evt =>
-                {
-                    if (updating) return;
-                    updating = true;
-                    float v = ClampRenderScale(evt.newValue);
-                    slider.value = v;
-                    field.value = v;
-                    setValue(v);
-                    RequestRebuild();
-                    updating = false;
-                });
-                field.RegisterValueChangedCallback(evt =>
-                {
-                    if (updating) return;
-                    updating = true;
-                    float v = ClampRenderScale(evt.newValue);
-                    slider.value = v;
-                    field.value = v;
-                    setValue(v);
-                    RequestRebuild();
-                    updating = false;
-                });
+                var statusChip = BuildStatusChip(status);
+                BindRenderScaleControls(slider, field, statusChip, setValue);
 
                 rowTop.Add(slider);
                 rowTop.Add(field);
-                rowTop.Add(BuildStatusChip(status));
+                rowTop.Add(statusChip);
 
                 if (!string.IsNullOrEmpty(recommended))
                 {
@@ -1979,38 +2170,21 @@ namespace ByteDance.PICO.XR.Editor
                 controlCell.style.flexDirection = FlexDirection.Row;
                 controlCell.style.alignItems = Align.Center;
                 controlCell.style.width = 180;
+                controlCell.style.flexShrink = 0;
                 row.Add(controlCell);
 
                 var slider = new Slider(0f, 2f) { value = current };
                 slider.style.flexGrow = 1;
+                slider.style.flexBasis = 0;
+                slider.style.minWidth = 0;
                 slider.style.marginRight = 8;
 
                 var field = new FloatField { value = current, formatString = "0.00", isDelayed = true };
                 field.style.width = 60;
+                field.style.flexShrink = 0;
 
-                bool updating = false;
-                slider.RegisterValueChangedCallback(evt =>
-                {
-                    if (updating) return;
-                    updating = true;
-                    float v = ClampRenderScale(evt.newValue);
-                    slider.value = v;
-                    field.value = v;
-                    setValue(v);
-                    RequestRebuild();
-                    updating = false;
-                });
-                field.RegisterValueChangedCallback(evt =>
-                {
-                    if (updating) return;
-                    updating = true;
-                    float v = ClampRenderScale(evt.newValue);
-                    slider.value = v;
-                    field.value = v;
-                    setValue(v);
-                    RequestRebuild();
-                    updating = false;
-                });
+                var statusChip = BuildStatusChip(status);
+                BindRenderScaleControls(slider, field, statusChip, setValue);
 
                 controlCell.Add(slider);
                 controlCell.Add(field);
@@ -2021,9 +2195,39 @@ namespace ByteDance.PICO.XR.Editor
                 recommendedCell.style.color = new StyleColor(GetTextSecondaryColor());
                 row.Add(recommendedCell);
 
-                row.Add(BuildStatusChip(status));
+                row.Add(statusChip);
                 return row;
             }
+        }
+
+        private static void BindRenderScaleControls(
+            Slider slider,
+            FloatField field,
+            VisualElement statusChip,
+            Action<float> setValue)
+        {
+            slider.RegisterValueChangedCallback(evt =>
+            {
+                UpdateRenderScaleControls(slider, field, statusChip, setValue, evt.newValue);
+            });
+            field.RegisterValueChangedCallback(evt =>
+            {
+                UpdateRenderScaleControls(slider, field, statusChip, setValue, evt.newValue);
+            });
+        }
+
+        private static void UpdateRenderScaleControls(
+            Slider slider,
+            FloatField field,
+            VisualElement statusChip,
+            Action<float> setValue,
+            float value)
+        {
+            float clampedValue = ClampRenderScale(value);
+            slider.SetValueWithoutNotify(clampedValue);
+            field.SetValueWithoutNotify(clampedValue);
+            setValue(clampedValue);
+            UpdateStatusChip(statusChip, EvaluateRenderScaleStatus(clampedValue));
         }
 
         private static VisualElement BuildToggleRow(string label, Func<bool> getValue, Action<bool> setValue, string impact, StatusLevel status)
@@ -2173,30 +2377,49 @@ namespace ByteDance.PICO.XR.Editor
             chip.style.borderLeftWidth = 1;
             chip.style.borderRightWidth = 1;
 
-            Color c = StatusColor(status);
-            chip.style.borderTopColor = new StyleColor(c);
-            chip.style.borderBottomColor = new StyleColor(c);
-            chip.style.borderLeftColor = new StyleColor(c);
-            chip.style.borderRightColor = new StyleColor(c);
-            chip.style.backgroundColor = new StyleColor(new Color(c.r, c.g, c.b, EditorGUIUtility.isProSkin ? 0.16f : 0.10f));
-
-            var dot = new VisualElement();
+            var dot = new VisualElement { name = "status-dot" };
             dot.style.width = 6;
             dot.style.height = 6;
             dot.style.borderTopLeftRadius = 3;
             dot.style.borderTopRightRadius = 3;
             dot.style.borderBottomLeftRadius = 3;
             dot.style.borderBottomRightRadius = 3;
-            dot.style.backgroundColor = new StyleColor(c);
             dot.style.marginRight = 6;
             chip.Add(dot);
 
-            var text = new Label(StatusText(status));
+            var text = new Label { name = "status-text" };
             text.style.color = new StyleColor(GetTextPrimaryColor());
             chip.Add(text);
 
             chip.style.width = 120;
+            UpdateStatusChip(chip, status);
             return chip;
+        }
+
+        private static void UpdateStatusChip(VisualElement chip, StatusLevel status)
+        {
+            Color color = StatusColor(status);
+            chip.style.borderTopColor = new StyleColor(color);
+            chip.style.borderBottomColor = new StyleColor(color);
+            chip.style.borderLeftColor = new StyleColor(color);
+            chip.style.borderRightColor = new StyleColor(color);
+            chip.style.backgroundColor = new StyleColor(new Color(
+                color.r,
+                color.g,
+                color.b,
+                EditorGUIUtility.isProSkin ? 0.16f : 0.10f));
+
+            VisualElement dot = chip.Q<VisualElement>("status-dot");
+            if (dot != null)
+            {
+                dot.style.backgroundColor = new StyleColor(color);
+            }
+
+            Label text = chip.Q<Label>("status-text");
+            if (text != null)
+            {
+                text.text = StatusText(status);
+            }
         }
 
         private static VisualElement BuildSummaryCard()
@@ -2214,9 +2437,9 @@ namespace ByteDance.PICO.XR.Editor
             box.Add(new Label($"Render Scale: {FormatRenderScale(ActiveDeviceConfig.renderScale)}"));
             box.Add(new Label($"Refresh Rate: {ActiveDeviceConfig.refreshRate}"));
             box.Add(new Label($"Foveated Rendering: {ActiveDeviceConfig.foveation}"));
-            box.Add(new Label($"Anti-Aliasing: {ActiveDeviceConfig.antiAliasing}"));
             box.Add(new Label($"Super Resolution: {(ActiveDeviceConfig.superResolution ? "On" : "Off")}"));
             box.Add(new Label($"Sharpening Mode: {ActiveDeviceConfig.sharpeningMode}"));
+            box.Add(new Label($"Sharpening Enhance Mode: {ActiveDeviceConfig.sharpeningEnhance}"));
             box.Add(new Label($"HDR: {(ActiveDeviceConfig.hdr ? "On" : "Off")}"));
             box.Add(new Label($"Adaptive Resolution: {(ActiveDeviceConfig.adaptiveResolution ? "On" : "Off")}"));
 
@@ -2241,9 +2464,9 @@ namespace ByteDance.PICO.XR.Editor
             box.Add(BuildDeviceLine("Render Scale", FormatRenderScale(config.renderScale), FormatRenderScale(t.recommendedRenderScale), true));
             box.Add(BuildDeviceLine("Refresh Rate", config.refreshRate, t.recommendedRefreshRate, t.refreshRates.Contains(config.refreshRate)));
             box.Add(BuildDeviceLine("Foveated Rendering", config.foveation, t.recommendedFoveation, t.foveations.Contains(config.foveation)));
-            box.Add(BuildDeviceLine("Anti-Aliasing", config.antiAliasing, t.recommendedAntiAliasing, t.antiAliasingModes.Contains(config.antiAliasing)));
             box.Add(BuildDeviceLine("Super Resolution", config.superResolution ? "On" : "Off", t.superResolutionRecommended ? "On" : "Off", t.superResolutionSupported || !config.superResolution));
             box.Add(BuildDeviceLine("Sharpening Mode", (config.superResolution ? SharpeningMode.None : config.sharpeningMode).ToString(), SharpeningMode.None.ToString(), true));
+            box.Add(BuildDeviceLine("Sharpening Enhance Mode", (config.superResolution || config.sharpeningMode == SharpeningMode.None ? SharpeningEnhance.None : config.sharpeningEnhance).ToString(), SharpeningEnhance.None.ToString(), true));
             box.Add(BuildDeviceLine("HDR", config.hdr ? "On" : "Off", t.hdrRecommended ? "On" : "Off", t.hdrSupported || !config.hdr));
             box.Add(BuildDeviceLine("Adaptive Resolution", config.adaptiveResolution ? "On" : "Off", t.adaptiveResolutionRecommended ? "On" : "Off", t.adaptiveResolutionSupported || !config.adaptiveResolution));
 

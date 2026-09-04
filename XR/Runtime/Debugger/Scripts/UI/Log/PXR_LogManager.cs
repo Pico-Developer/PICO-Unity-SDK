@@ -28,36 +28,68 @@ namespace ByteDance.PICO.Debugger
         public PXR_TabBarVisualController infoIcon;
         public Transform messageContainer;
         private int ListCount => infoList.Count + warningList.Count + errorList.Count;
+
+        // Queue to buffer log messages received inside the Application.logMessageReceived
+        // callback. UI creation (Instantiate) and layout rebuild (ForceRebuildLayoutImmediate)
+        // must NOT happen inside that callback because it may fire during Unity's internal
+        // graphic rebuild loop, causing infinite recursion and SIGABRT.
+        private struct QueuedLogEntry
+        {
+            public string logString;
+            public string stackTrace;
+            public LogType type;
+        }
+        private readonly Queue<QueuedLogEntry> _logQueue = new();
+        private bool _isProcessingQueue;
         private void AddMessage(string title, string content, LogType type)
         {
             switch (type)
             {
                 case LogType.Error:
-                    CreateMessage(title, content, type, errorList, errorMessage);
+                    CreateMessage(title, content, type, errorList, errorMessage, errorIcon);
                     errorIcon.AddMessage();
                     break;
                 case LogType.Assert:
                     break;
                 case LogType.Warning:
-                    CreateMessage(title, content, type, warningList, warningMessage);
+                    CreateMessage(title, content, type, warningList, warningMessage, warningIcon);
                     warningIcon.AddMessage();
                     break;
                 case LogType.Log:
-                    CreateMessage(title, content, type, infoList, infoMessage);
+                    CreateMessage(title, content, type, infoList, infoMessage, infoIcon);
                     infoIcon.AddMessage();
                     break;
                 case LogType.Exception:
                     break;
             }
         }
-        private void CreateMessage(string title, string content, in LogType type, in List<GameObject> list, in PXR_LogMessageController template)
+        private void CreateMessage(string title, string content, in LogType type, in List<GameObject> list, in PXR_LogMessageController template, PXR_TabBarVisualController icon)
         {
             var msg = Instantiate(template, messageContainer).GetComponent<PXR_LogMessageController>();
             msg.Init(title, content);
+            // Keep new items consistent with the current filter toggle: if this type
+            // is currently filtered out, the new item must start hidden too.
+            if (icon != null && icon.transform.TryGetComponent(out Toggle toggle))
+            {
+                msg.gameObject.SetActive(toggle.isOn);
+            }
+            var targetList = list;
+            msg.SetOnDelete(deleted => DeleteSingleMessage(deleted, targetList, icon));
             list.Add(msg.gameObject);
+        }
+        private void DeleteSingleMessage(PXR_LogMessageController message, List<GameObject> list, PXR_TabBarVisualController icon)
+        {
+            if (message == null) return;
+            if (list.Remove(message.gameObject))
+            {
+                icon.RemoveMessage();
+            }
+            Destroy(message.gameObject);
+            LayoutRebuild();
         }
         public void FilterLogs(LogType type, bool isFilter)
         {
+            if (_isProcessingQueue) return;
             switch (type)
             {
                 case LogType.Error:
@@ -88,10 +120,47 @@ namespace ByteDance.PICO.Debugger
         }
         private void OnLogMessageReceived(string logString, string stackTrace, LogType type)
         {
-            if (PXR_UIController.Instance.config.maxInfoCount > ListCount)
+            // Do NOT create UI elements or call LayoutRebuild here.
+            // This callback can fire during Unity's graphic rebuild loop,
+            // causing infinite recursion. Buffer the message and process
+            // it in LateUpdate instead.
+            _logQueue.Enqueue(new QueuedLogEntry
             {
-                AddMessage(logString, stackTrace, type);
-                LayoutRebuild();
+                logString = logString,
+                stackTrace = stackTrace,
+                type = type
+            });
+        }
+        void LateUpdate()
+        {
+            if (_isProcessingQueue || _logQueue.Count == 0) return;
+            _isProcessingQueue = true;
+            try
+            {
+                var ui = PXR_UIController.Instance;
+                if (ui == null || ui.config == null)
+                {
+                    _logQueue.Clear();
+                    return;
+                }
+                while (_logQueue.Count > 0 &&
+                       ui.config.maxInfoCount > ListCount)
+                {
+                    var entry = _logQueue.Dequeue();
+                    AddMessage(entry.logString, entry.stackTrace, entry.type);
+                }
+                if (_logQueue.Count > 0)
+                {
+                    // Capacity reached; discard remaining to avoid unbounded growth.
+                    _logQueue.Clear();
+                }
+                // Call LayoutRebuilder directly (not LayoutRebuild()) because
+                // _isProcessingQueue guard would skip the wrapped method.
+                LayoutRebuilder.ForceRebuildLayoutImmediate(messageContainer.GetComponent<RectTransform>());
+            }
+            finally
+            {
+                _isProcessingQueue = false;
             }
         }
         public void DeleteAllMessages()
@@ -117,6 +186,7 @@ namespace ByteDance.PICO.Debugger
         }
         private void LayoutRebuild()
         {
+            if (_isProcessingQueue) return;
             LayoutRebuilder.ForceRebuildLayoutImmediate(messageContainer.GetComponent<RectTransform>());
             // LayoutRebuilder.ForceRebuildLayoutImmediate(transform.parent.GetComponent<RectTransform>());
         }

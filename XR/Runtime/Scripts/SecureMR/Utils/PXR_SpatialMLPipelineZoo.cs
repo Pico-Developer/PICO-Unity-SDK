@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using ByteDance.PICO.XR;
 using UnityEngine;
 
@@ -10,8 +11,6 @@ namespace ByteDance.PICO.SecureMR
 {
     public static class SpatialMLPipelineZoo
     {
-        private const string DefaultModelId = "default";
-
         public static SpatialMLPipelineZooBundle LoadPackage(Provider provider, SpatialMLPipelineZooAsset packageAsset, params string[] pipelineIds)
         {
             if (provider == null) throw new ArgumentNullException(nameof(provider));
@@ -25,15 +24,13 @@ namespace ByteDance.PICO.SecureMR
             };
 
             var requested = pipelineIds == null || pipelineIds.Length == 0 ? null : new HashSet<string>(pipelineIds);
-            var modelSpecs = ReadModelSpecs(manifest, packageAsset);
-
             foreach (var spec in ReadPipelineSpecs(manifest))
             {
                 if (requested != null && !requested.Contains(spec.id)) continue;
                 var pipelineJsonAsset = packageAsset.FindPipelineJson(spec.id, spec.path);
                 if (pipelineJsonAsset == null) throw new InvalidOperationException($"Pipeline JSON not found for '{spec.id}' ({spec.path}).");
                 var pipelineSpec = MiniJson.ParseObject(pipelineJsonAsset.text);
-                var pipeline = DeserializePipeline(provider, packageAsset, pipelineSpec, modelSpecs);
+                var pipeline = DeserializePipeline(provider, packageAsset, pipelineSpec);
                 pipeline.Id = spec.id;
                 pipeline.Inputs = ReadTensorList(GetValue(pipelineSpec, "inputs"));
                 pipeline.Outputs = ReadTensorList(GetValue(pipelineSpec, "outputs"));
@@ -57,8 +54,10 @@ namespace ByteDance.PICO.SecureMR
             return bundle;
         }
 
-        private static SpatialMLPipelineZooPipeline DeserializePipeline(Provider provider, SpatialMLPipelineZooAsset packageAsset,
-            Dictionary<string, object> pipelineSpec, Dictionary<string, ModelSpec> modelSpecs)
+        private static SpatialMLPipelineZooPipeline DeserializePipeline(
+            Provider provider,
+            SpatialMLPipelineZooAsset packageAsset,
+            Dictionary<string, object> pipelineSpec)
         {
             var result = new SpatialMLPipelineZooPipeline { Pipeline = provider.CreatePipeline() };
             var tensorSpecs = GetObject(pipelineSpec, "tensors") ?? throw new InvalidOperationException("Pipeline JSON is missing tensors.");
@@ -72,7 +71,7 @@ namespace ByteDance.PICO.SecureMR
             foreach (var item in operators)
             {
                 var opSpec = item as Dictionary<string, object> ?? throw new InvalidOperationException("Operator entry is not an object.");
-                CreateOperator(packageAsset, result.Pipeline, result.Tensors, opSpec, modelSpecs);
+                CreateOperator(packageAsset, result.Pipeline, result.Tensors, opSpec);
             }
             return result;
         }
@@ -80,8 +79,11 @@ namespace ByteDance.PICO.SecureMR
         private static Tensor CreatePipelineTensor(Pipeline pipeline, Dictionary<string, object> spec)
         {
             var isPlaceholder = GetBool(spec, "is_placeholder");
-            var tensorType = GetString(spec, "tensor_type").ToLowerInvariant();
-            if (tensorType == "gltf") return pipeline.CreateTensorReference<Gltf>();
+            var tensorType = GetString(spec, "tensor_type");
+            if (string.IsNullOrEmpty(tensorType)) tensorType = GetString(spec, "type");
+            tensorType = tensorType.ToLowerInvariant();
+            if (GetBool(spec, "is_gltf") || tensorType == "gltf")
+                return pipeline.CreateTensorReference<Gltf>();
             if (tensorType == "timestamp") return isPlaceholder
                 ? pipeline.CreateTensorReference<int, TimeStamp>(4, new TensorShape(1))
                 : pipeline.CreateTensor<int, TimeStamp>(4, new TensorShape(1), ReadArray<int>(spec));
@@ -184,8 +186,11 @@ namespace ByteDance.PICO.SecureMR
             return provider.CreateTensor<T, Matrix>(channels, shape, data);
         }
 
-        private static void CreateOperator(SpatialMLPipelineZooAsset packageAsset, Pipeline pipeline, Dictionary<string, Tensor> tensors,
-            Dictionary<string, object> opSpec, Dictionary<string, ModelSpec> modelSpecs)
+        private static void CreateOperator(
+            SpatialMLPipelineZooAsset packageAsset,
+            Pipeline pipeline,
+            Dictionary<string, Tensor> tensors,
+            Dictionary<string, object> opSpec)
         {
             var type = FormatOperatorType(GetString(opSpec, "type"));
             var inputs = ReadTensorList(GetValue(opSpec, "inputs"));
@@ -237,21 +242,30 @@ namespace ByteDance.PICO.SecureMR
                 case "type_convert": CreateAssignment(pipeline, tensors, inputs[0], outputs[0]); break;
                 case "cvt_color":
                 {
-                    var op = pipeline.CreateOperator<ConvertColorOperator>(new ColorConvertOperatorConfiguration(GetInt(opSpec, "flag")));
+                    var op = pipeline.CreateOperator<ConvertColorOperator>(
+                        new ColorConvertOperatorConfiguration(GetIntOrAttr(opSpec, "flag", 0)));
                     op.SetOperand("src", Resolve(inputs[0], tensors).tensor);
                     op.SetResult("dst", Resolve(outputs[0], tensors).tensor);
                     break;
                 }
                 case "arithmetic":
                 {
-                    var op = pipeline.CreateOperator<ArithmeticComposeOperator>(new ArithmeticComposeOperatorConfiguration(GetString(opSpec, "expression")));
+                    var op = pipeline.CreateOperator<ArithmeticComposeOperator>(
+                        new ArithmeticComposeOperatorConfiguration(GetStringOrAttr(opSpec, "expression")));
                     for (var i = 0; i < inputs.Count; i++) op.SetOperand("{" + i + "}", Resolve(inputs[i], tensors).tensor);
                     op.SetResult("result", Resolve(outputs[0], tensors).tensor);
                     break;
                 }
                 case "elementwise":
+                case "elementwise_min":
+                case "elementwise_max":
+                case "elementwise_multiply":
+                case "elementwise_or":
+                case "elementwise_and":
                 {
-                    var opName = GetString(opSpec, "op").ToLowerInvariant();
+                    var opName = type == "elementwise"
+                        ? GetString(opSpec, "op").ToLowerInvariant()
+                        : type.Substring("elementwise_".Length);
                     Operator op = CreateElementwiseOperator(pipeline, opName);
                     op.SetOperand("operand0", Resolve(inputs[0], tensors).tensor);
                     op.SetOperand("operand1", Resolve(inputs[1], tensors).tensor);
@@ -272,7 +286,8 @@ namespace ByteDance.PICO.SecureMR
                 }
                 case "nms":
                 {
-                    var op = pipeline.CreateOperator<NmsOperator>(new NmsOperatorConfiguration(GetFloat(opSpec, "threshold", 0.5f)));
+                    var op = pipeline.CreateOperator<NmsOperator>(
+                        new NmsOperatorConfiguration(GetFloatOrAttr(opSpec, "threshold", 0.5f)));
                     BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
                     break;
                 }
@@ -298,14 +313,15 @@ namespace ByteDance.PICO.SecureMR
                     var op = pipeline.CreateOperator<GetTransformMatrixOperator>();
                     op.SetOperand("rotation", Resolve(inputs[0], tensors).tensor);
                     op.SetOperand("translation", Resolve(inputs[1], tensors).tensor);
-                    op.SetOperand("scale", Resolve(inputs[2], tensors).tensor);
+                    if (inputs.Count > 2) op.SetOperand("scale", Resolve(inputs[2], tensors).tensor);
                     op.SetResult("result", Resolve(outputs[0], tensors).tensor);
                     break;
                 }
                 case "normalize":
                 {
                     var op = pipeline.CreateOperator<NormalizeOperator>(
-                        new NormalizeOperatorConfiguration(ParseNormalizeType(GetString(opSpec, "normalize_type", "l2"))));
+                        new NormalizeOperatorConfiguration(
+                            ParseNormalizeType(GetStringOrAttr(opSpec, "normalize_type", "l2"))));
                     BindUnaryOperator(op, tensors, inputs, outputs);
                     break;
                 }
@@ -319,7 +335,10 @@ namespace ByteDance.PICO.SecureMR
                 }
                 case "compare_to":
                 {
-                    var op = pipeline.CreateOperator<CustomizedCompareOperator>(new ComparisonOperatorConfiguration(ParseComparison(GetString(opSpec, "compare"))));
+                    var comparison = GetString(opSpec, "comparison");
+                    if (string.IsNullOrEmpty(comparison)) comparison = GetStringOrAttr(opSpec, "compare");
+                    var op = pipeline.CreateOperator<CustomizedCompareOperator>(
+                        new ComparisonOperatorConfiguration(ParseComparison(comparison)));
                     op.SetOperand("operand0", Resolve(inputs[0], tensors).tensor);
                     op.SetOperand("operand1", Resolve(inputs[1], tensors).tensor);
                     op.SetResult("result", Resolve(outputs[0], tensors).tensor);
@@ -345,8 +364,11 @@ namespace ByteDance.PICO.SecureMR
                 }
                 case "sort_matrix":
                 {
+                    var sortMode = GetString(opSpec, "mode");
+                    if (string.IsNullOrEmpty(sortMode)) sortMode = GetString(opSpec, "sort_type");
+                    if (string.IsNullOrEmpty(sortMode)) sortMode = GetStringOrAttr(opSpec, "axis", "row");
                     var op = pipeline.CreateOperator<SortMatrixOperator>(
-                        new SortMatrixOperatorConfiguration(ParseMatrixSortType(GetString(opSpec, "sort_type", "row"))));
+                        new SortMatrixOperatorConfiguration(ParseMatrixSortType(sortMode)));
                     BindUnaryOperator(op, tensors, inputs, outputs, "operand", "result");
                     break;
                 }
@@ -365,55 +387,77 @@ namespace ByteDance.PICO.SecureMR
                 case "swap_hwc_chw":
                 {
                     var op = pipeline.CreateOperator<SwapHwcChwOperator>();
-                    BindUnaryOperator(op, tensors, inputs, outputs, "src", "dst");
+                    BindUnaryOperator(op, tensors, inputs, outputs, "operand", "result");
                     break;
                 }
-                case "run_algorithm": CreateModelOperator(packageAsset, pipeline, tensors, opSpec, modelSpecs); break;
+                case "run_algorithm": CreateModelOperator(packageAsset, pipeline, tensors, opSpec); break;
                 case "javascript":
                 {
-                    var op = pipeline.CreateOperator<JavascriptOperator>(new JavascriptOperatorConfiguration(GetString(opSpec, "script")));
+                    var op = pipeline.CreateOperator<JavascriptOperator>(
+                        new JavascriptOperatorConfiguration(GetStringOrAttr(opSpec, "script")));
                     foreach (var pair in ReadMappedTensorList(GetValue(opSpec, "inputs"))) op.SetOperand(pair.alias, tensors[pair.tensor]);
                     foreach (var pair in ReadMappedTensorList(GetValue(opSpec, "outputs"))) op.SetResult(pair.alias, tensors[pair.tensor]);
                     break;
                 }
                 case "draw_text":
                 {
-                    var op = pipeline.CreateOperator<RenderTextOperator>(new RenderTextOperatorConfiguration(ParseTypeface(GetString(opSpec, "typeface")), GetString(opSpec, "language_and_locale", "en-US"), GetInt(opSpec, "canvas_width", 256), GetInt(opSpec, "canvas_height", 64)));
-                    op.SetOperand("text", tensors[GetString(opSpec, "text")]);
-                    op.SetOperand("start", tensors[GetString(opSpec, "start")]);
-                    op.SetOperand("colors", tensors[GetString(opSpec, "colors")]);
-                    op.SetOperand("texture ID", tensors[GetString(opSpec, "texture_id")]);
-                    op.SetOperand("font size", tensors[GetString(opSpec, "font_size")]);
-                    op.SetOperand("gltf", tensors[GetString(opSpec, "gltf")]);
+                    var config = GetString(opSpec, "config");
+                    if (string.IsNullOrEmpty(config)) config = GetAttr(opSpec, 0)?.ToString() ?? string.Empty;
+                    var parts = config.Split('#');
+                    var typeface = parts.Length > 0 ? parts[0] : GetString(opSpec, "typeface");
+                    var locale = parts.Length > 1 ? parts[1] : GetString(opSpec, "language_and_locale", "en-US");
+                    var width = parts.Length > 2 ? ParseInt(parts[2], 256) : GetInt(opSpec, "canvas_width", 256);
+                    var height = parts.Length > 3 ? ParseInt(parts[3], 64) : GetInt(opSpec, "canvas_height", 64);
+                    var op = pipeline.CreateOperator<RenderTextOperator>(
+                        new RenderTextOperatorConfiguration(ParseTypeface(typeface), locale, width, height));
+                    var gltfName = GetTensorName(opSpec, inputs, "gltf", 0);
+                    op.SetOperand("gltf", Resolve(gltfName, tensors).tensor);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "start", "start", 1);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "colors", "colors", 2);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "texture ID", "texture_id", 3);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "font size", "font_size", 4);
+                    var textName = GetTensorName(opSpec, inputs, "text_tensor", 5);
+                    if (!string.IsNullOrEmpty(textName))
+                    {
+                        op.SetOperand("text", Resolve(textName, tensors).tensor);
+                    }
+                    else
+                    {
+                        var text = GetString(opSpec, "text");
+                        if (string.IsNullOrEmpty(text)) text = GetAttr(opSpec, 1)?.ToString() ?? string.Empty;
+                        var bytes = Encoding.UTF8.GetBytes(text);
+                        if (bytes.Length == 0) bytes = new byte[] { 0 };
+                        op.SetOperand("text", pipeline.CreateTensor<byte, Scalar>(
+                            1, new TensorShape(Math.Max(1, bytes.Length)), bytes));
+                    }
                     break;
                 }
                 case "load_texture":
                 {
                     var op = pipeline.CreateOperator<LoadTextureOperator>();
-                    op.SetOperand("rgb image", Resolve(GetTensorName(opSpec, inputs, "rgb_image", 0), tensors).tensor);
-                    op.SetOperand("gltf", tensors[GetString(opSpec, "gltf")]);
+                    op.SetOperand("gltf", Resolve(GetTensorName(opSpec, inputs, "gltf", 0), tensors).tensor);
+                    op.SetOperand("rgb image", Resolve(GetTensorName(opSpec, inputs, "rgb_image", 1), tensors).tensor);
                     op.SetResult("texture ID", Resolve(GetTensorName(opSpec, outputs, "texture_id", 0), tensors).tensor);
                     break;
                 }
                 case "update_gltf":
                 {
+                    var updateType = GetString(opSpec, "update_type");
+                    if (string.IsNullOrEmpty(updateType)) updateType = GetStringOrAttr(opSpec, "attribute");
                     var op = pipeline.CreateOperator<UpdateGltfOperator>(
-                        new UpdateGltfOperatorConfiguration(ParseGltfAttribute(GetString(opSpec, "attribute"))));
-                    op.SetOperand("gltf", tensors[GetString(opSpec, "gltf")]);
-                    op.SetOperand("material ID", tensors[GetString(opSpec, "material_id")]);
-                    op.SetOperand("value", Resolve(GetTensorName(opSpec, inputs, "value", 0), tensors).tensor);
+                        new UpdateGltfOperatorConfiguration(ParseGltfAttribute(updateType)));
+                    op.SetOperand("gltf", Resolve(GetTensorName(opSpec, inputs, "gltf", 0), tensors).tensor);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "value", "value", 1);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "material ID", "material_id", 2);
                     break;
                 }
                 case "render_gltf":
                 {
                     var op = pipeline.CreateOperator<SwitchGltfRenderStatusOperator>();
-                    op.SetOperand("gltf", tensors[GetString(opSpec, "gltf")]);
-                    op.SetOperand("world pose", tensors[GetString(opSpec, "pose")]);
-                    if (!string.IsNullOrEmpty(GetString(opSpec, "view_locked")))
-                    {
-                        op.SetOperand("view locked", tensors[GetString(opSpec, "view_locked")]);
-                    }
-                    if (!string.IsNullOrEmpty(GetString(opSpec, "visible"))) op.SetOperand("is visible", tensors[GetString(opSpec, "visible")]);
+                    op.SetOperand("gltf", Resolve(GetTensorName(opSpec, inputs, "gltf", 0), tensors).tensor);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "world pose", "pose", 1);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "view locked", "view_locked", 2);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "is visible", "visible", 3);
                     break;
                 }
                 case "scenegraph_visibility":
@@ -476,6 +520,20 @@ namespace ByteDance.PICO.SecureMR
             if (outputs.Count > 0) op.SetResult(outputName, Resolve(outputs[0], tensors).tensor);
         }
 
+        private static void BindOptionalOperand(
+            Operator op,
+            Dictionary<string, Tensor> tensors,
+            Dictionary<string, object> opSpec,
+            List<string> inputs,
+            string operandName,
+            string propertyName,
+            int inputIndex)
+        {
+            var tensorName = GetTensorName(opSpec, inputs, propertyName, inputIndex);
+            if (!string.IsNullOrEmpty(tensorName))
+                op.SetOperand(operandName, Resolve(tensorName, tensors).tensor);
+        }
+
         private static void BindNamedOrSequentialOperator(Operator op, Dictionary<string, Tensor> tensors,
             Dictionary<string, object> opSpec, List<string> inputs, List<string> outputs)
         {
@@ -503,10 +561,13 @@ namespace ByteDance.PICO.SecureMR
             }
         }
 
-        private static void CreateModelOperator(SpatialMLPipelineZooAsset packageAsset, Pipeline pipeline, Dictionary<string, Tensor> tensors,
-            Dictionary<string, object> opSpec, Dictionary<string, ModelSpec> modelSpecs)
+        private static void CreateModelOperator(
+            SpatialMLPipelineZooAsset packageAsset,
+            Pipeline pipeline,
+            Dictionary<string, Tensor> tensors,
+            Dictionary<string, object> opSpec)
         {
-            var modelSpec = ResolveModelSpec(opSpec, modelSpecs);
+            var modelSpec = ReadInlineModelSpec(opSpec);
             var data = packageAsset.FindBinaryBytes(modelSpec.BinPath);
             if (data == null) throw new InvalidOperationException($"Model binary '{modelSpec.BinPath}' was not found in package asset.");
 
@@ -543,105 +604,21 @@ namespace ByteDance.PICO.SecureMR
             }
         }
 
-        private static Dictionary<string, ModelSpec> ReadModelSpecs(Dictionary<string, object> manifest, SpatialMLPipelineZooAsset packageAsset)
+        private static ModelSpec ReadInlineModelSpec(Dictionary<string, object> opSpec)
         {
-            var specs = new Dictionary<string, ModelSpec>();
-            var legacyModelJson = packageAsset.modelJson != null ? MiniJson.ParseObject(packageAsset.modelJson.text) : null;
-            AddModelSpec(specs, CreateModelSpec(GetObject(manifest, "model"), DefaultModelId, legacyModelJson, true));
+            var modelInfo = GetObject(opSpec, "model");
+            if (modelInfo == null)
+                throw new InvalidOperationException(
+                    "RunModelInference operator requires inline model metadata under 'model'.");
 
-            var models = GetValue(manifest, "models");
-            if (models is List<object> list)
-            {
-                foreach (var item in list.OfType<Dictionary<string, object>>())
-                {
-                    AddModelSpec(specs, CreateModelSpec(item, GetString(item, "id"), null, true));
-                }
-            }
-            else if (models is Dictionary<string, object> map)
-            {
-                foreach (var pair in map)
-                {
-                    if (pair.Value is Dictionary<string, object> modelInfo)
-                    {
-                        AddModelSpec(specs, CreateModelSpec(modelInfo, pair.Key, null, true));
-                    }
-                }
-            }
-
-            return specs;
-        }
-
-        private static void AddModelSpec(Dictionary<string, ModelSpec> specs, ModelSpec spec)
-        {
-            if (spec == null || string.IsNullOrEmpty(spec.BinPath)) return;
-            specs[spec.Id] = spec;
-            if (!specs.ContainsKey(DefaultModelId)) specs[DefaultModelId] = spec;
-        }
-
-        private static ModelSpec ResolveModelSpec(Dictionary<string, object> opSpec, Dictionary<string, ModelSpec> modelSpecs)
-        {
-            var resolved = TryGetModelSpec(modelSpecs, DefaultModelId)?.Clone() ?? new ModelSpec { Id = DefaultModelId };
-            var modelValue = GetValue(opSpec, "model");
-
-            if (modelValue is string modelId)
-            {
-                resolved = TryGetModelSpec(modelSpecs, modelId)?.Clone() ?? resolved;
-            }
-            else if (modelValue is Dictionary<string, object> inlineModel)
-            {
-                ApplyModelSpec(resolved, CreateModelSpec(inlineModel, resolved.Id, null, false));
-            }
-
-            var explicitModelId = GetString(opSpec, "model_id");
-            if (!string.IsNullOrEmpty(explicitModelId))
-            {
-                resolved = TryGetModelSpec(modelSpecs, explicitModelId)?.Clone() ?? resolved;
-            }
-
-            ApplyModelSpec(resolved, CreateModelSpec(opSpec, resolved.Id, null, false));
-            if (string.IsNullOrEmpty(resolved.BinPath))
-            {
-                throw new InvalidOperationException("RunModelInference operator must specify model_asset/model_path/bin_path or reference a manifest model id.");
-            }
-
-            return resolved;
-        }
-
-        private static ModelSpec TryGetModelSpec(Dictionary<string, ModelSpec> modelSpecs, string id)
-        {
-            return !string.IsNullOrEmpty(id) && modelSpecs != null && modelSpecs.TryGetValue(id, out var spec) ? spec : null;
-        }
-
-        private static ModelSpec CreateModelSpec(Dictionary<string, object> modelInfo, string fallbackId,
-            Dictionary<string, object> modelJson, bool useDefaults)
-        {
-            if (modelInfo == null) return null;
-            var id = GetString(modelInfo, "id", string.IsNullOrEmpty(fallbackId) ? DefaultModelId : fallbackId);
             return new ModelSpec
             {
-                Id = id,
-                BinPath = FirstString(modelInfo, "model_asset", "model_path", "bin_path", "path"),
-                ModelName = useDefaults ? GetString(modelInfo, "model_name", GetString(modelJson, "model_name", id)) : GetString(modelInfo, "model_name"),
-                ModelType = useDefaults ? GetString(modelInfo, "model_type", "litert") : GetString(modelInfo, "model_type"),
-                ModelTarget = useDefaults ? GetString(modelInfo, "model_target", "npu") : GetString(modelInfo, "model_target"),
-                CpuTargetNumThreads = GetInt(modelInfo, "cpu_target_num_threads", 1),
-                HasCpuTargetNumThreads = GetValue(modelInfo, "cpu_target_num_threads") != null
+                BinPath = GetString(modelInfo, "bin_path"),
+                ModelName = GetString(modelInfo, "model_name"),
+                ModelType = GetString(modelInfo, "model_type"),
+                ModelTarget = GetString(modelInfo, "model_target"),
+                CpuTargetNumThreads = GetInt(modelInfo, "cpu_target_num_threads", 0)
             };
-        }
-
-        private static void ApplyModelSpec(ModelSpec target, ModelSpec source)
-        {
-            if (target == null || source == null) return;
-            if (!string.IsNullOrEmpty(source.Id)) target.Id = source.Id;
-            if (!string.IsNullOrEmpty(source.BinPath)) target.BinPath = source.BinPath;
-            if (!string.IsNullOrEmpty(source.ModelName)) target.ModelName = source.ModelName;
-            if (!string.IsNullOrEmpty(source.ModelType)) target.ModelType = source.ModelType;
-            if (!string.IsNullOrEmpty(source.ModelTarget)) target.ModelTarget = source.ModelTarget;
-            if (source.HasCpuTargetNumThreads)
-            {
-                target.CpuTargetNumThreads = source.CpuTargetNumThreads;
-                target.HasCpuTargetNumThreads = true;
-            }
         }
 
         private static void CreateAssignment(Pipeline pipeline, Dictionary<string, Tensor> tensors, string input, string output)
@@ -691,7 +668,11 @@ namespace ByteDance.PICO.SecureMR
             foreach (var pair in GetObject(pipelineSpec, "tensors"))
             {
                 var spec = pair.Value as Dictionary<string, object>;
-                if (spec == null || GetString(spec, "tensor_type").ToLowerInvariant() != "gltf") continue;
+                if (spec == null) continue;
+                var tensorType = GetString(spec, "tensor_type");
+                if (string.IsNullOrEmpty(tensorType)) tensorType = GetString(spec, "type");
+                if (!GetBool(spec, "is_gltf") &&
+                    !tensorType.Equals("gltf", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!bundle.GlobalTensors.TryGetValue(pair.Key, out var global))
                 {
                     var bytes = packageAsset.FindBinaryBytes(GetString(spec, "asset"));
@@ -757,7 +738,8 @@ namespace ByteDance.PICO.SecureMR
 
         private static T[] ReadArray<T>(Dictionary<string, object> spec) where T : struct
         {
-            if (!(GetValue(spec, "value") is List<object> list)) return null;
+            var value = GetValue(spec, "data") ?? GetValue(spec, "value");
+            if (!(value is List<object> list)) return null;
             var result = new T[list.Count];
             for (var i = 0; i < list.Count; i++) result[i] = (T)Convert.ChangeType(list[i], typeof(T), CultureInfo.InvariantCulture);
             return result;
@@ -826,6 +808,13 @@ namespace ByteDance.PICO.SecureMR
             return string.Empty;
         }
 
+        private static int ParseInt(string value, int fallback)
+        {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : fallback;
+        }
+
         private static SecureMRComparison ParseComparison(string value)
         {
             if (value == ">") return SecureMRComparison.LargerThan;
@@ -866,7 +855,10 @@ namespace ByteDance.PICO.SecureMR
 
         private static SecureMRMatrixSortType ParseMatrixSortType(string value)
         {
-            return value.ToLowerInvariant() == "column" ? SecureMRMatrixSortType.Column : SecureMRMatrixSortType.Row;
+            value = value.ToLowerInvariant();
+            return value == "column" || value == "col"
+                ? SecureMRMatrixSortType.Column
+                : SecureMRMatrixSortType.Row;
         }
 
         private static SecureMRGltfOperatorAttribute ParseGltfAttribute(string value)
@@ -897,17 +889,28 @@ namespace ByteDance.PICO.SecureMR
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_CONVERT_COLOR_PICO") return "cvt_color";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_ASSIGNMENT_PICO") return "assignment";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_ARITHMETIC_COMPOSE_PICO") return "arithmetic";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ELEMENTWISE_MIN_PICO") return "elementwise_min";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ELEMENTWISE_MAX_PICO") return "elementwise_max";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ELEMENTWISE_MULTIPLY_PICO") return "elementwise_multiply";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ELEMENTWISE_OR_PICO") return "elementwise_or";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ELEMENTWISE_AND_PICO") return "elementwise_and";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ALL_PICO") return "all";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_ANY_PICO") return "any";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_RUN_MODEL_INFERENCE_PICO") return "run_algorithm";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_JAVASCRIPT_PICO") return "javascript";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_NORMALIZE_PICO") return "normalize";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_UV_TO_3D_IN_CAM_SPACE_PICO") return "uv2_cam";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_UV_TO_3D_IN_CAMERA_SPACE_PICO") return "uv2_cam";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_CAMERA_SPACE_TO_WORLD_PICO") return "cam_space_to_xr_local";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_GET_TRANSFORM_MAT_PICO") return "transform";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_GET_TRANSFORM_MATRIX_PICO") return "transform";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_CUSTOMIZED_COMPARE_PICO") return "compare_to";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_ARGMAX_PICO") return "argmax";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_VECTOR_PICO") return "sort_vector";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_VEC_PICO") return "sort_vector";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_INVERSION_PICO") return "inversion";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_MATRIX_PICO") return "sort_matrix";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_MAT_PICO") return "sort_matrix";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_LOAD_TEXTURE_PICO") return "load_texture";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_UPDATE_GLTF_PICO") return "update_gltf";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_RENDER_TEXT_PICO") return "draw_text";
@@ -918,23 +921,57 @@ namespace ByteDance.PICO.SecureMR
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SPEAKER_PICO") return "speaker";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_DEPTH_PICO") return "depth";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SWAP_HWC_CHW_PICO") return "swap_hwc_chw";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_NMS_PICO") return "nms";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_NON_MAXIMUM_SUPPRESSION_PICO") return "nms";
-            if (type == "XR_SECURE_MR_OPERATOR_TYPE_SOLVE_PNP_PICO") return "solve_pnp";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_SOLVE_PNP_PICO" ||
+                type == "XR_SECURE_MR_OPERATOR_TYPE_SOLVE_P_N_P_PICO") return "solve_pnp";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SVD_PICO") return "svd";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_NORM_PICO") return "norm";
-            return type.ToLowerInvariant();
+            if (type == "JS_SCRIPTING") return "javascript";
+            if (type == "MAKE_TRANSFORM_MAT") return "transform";
+            var normalized = type.ToLowerInvariant();
+            if (normalized == "camera_space_to_world") return "cam_space_to_xr_local";
+            if (normalized == "uv_to_3d_in_cam_space" ||
+                normalized == "uv_to_3d_in_camera_space") return "uv2_cam";
+            if (normalized == "customized_compare") return "compare_to";
+            if (normalized == "solve_p_n_p") return "solve_pnp";
+            if (normalized == "sort_vec") return "sort_vector";
+            if (normalized == "sort_mat") return "sort_matrix";
+            if (normalized == "get_transform_mat" ||
+                normalized == "get_transform_matrix") return "transform";
+            if (normalized == "switch_gltf_render_status") return "render_gltf";
+            if (normalized == "render_text") return "draw_text";
+            if (normalized == "run_model_inference") return "run_algorithm";
+            return normalized;
         }
 
         private static string SanitizeModelName(string value) => string.IsNullOrEmpty(value) ? value : value.Replace('-', '_').Replace('.', '_').Replace(' ', '_');
-        private static string FirstString(Dictionary<string, object> obj, params string[] keys)
+        private static string GetStringOrAttr(
+            Dictionary<string, object> obj,
+            string key,
+            string fallback = "")
         {
-            foreach (var key in keys)
-            {
-                var value = GetString(obj, key);
-                if (!string.IsNullOrEmpty(value)) return value;
-            }
+            var value = GetString(obj, key);
+            if (!string.IsNullOrEmpty(value)) return value;
+            return GetAttr(obj, 0)?.ToString() ?? fallback;
+        }
 
-            return string.Empty;
+        private static int GetIntOrAttr(Dictionary<string, object> obj, string key, int fallback)
+        {
+            var value = GetValue(obj, key) ?? GetAttr(obj, 0);
+            return value == null ? fallback : Convert.ToInt32(value, CultureInfo.InvariantCulture);
+        }
+
+        private static float GetFloatOrAttr(Dictionary<string, object> obj, string key, float fallback)
+        {
+            var value = GetValue(obj, key) ?? GetAttr(obj, 0);
+            return value == null ? fallback : Convert.ToSingle(value, CultureInfo.InvariantCulture);
+        }
+
+        private static object GetAttr(Dictionary<string, object> obj, int index)
+        {
+            var attrs = GetList(obj, "attrs");
+            return attrs != null && index >= 0 && index < attrs.Count ? attrs[index] : null;
         }
 
         private static object GetValue(Dictionary<string, object> obj, string key) => obj != null && obj.TryGetValue(key, out var value) ? value : null;
@@ -942,32 +979,15 @@ namespace ByteDance.PICO.SecureMR
         private static List<object> GetList(Dictionary<string, object> obj, string key) => GetValue(obj, key) as List<object>;
         private static string GetString(Dictionary<string, object> obj, string key, string fallback = "") => GetValue(obj, key)?.ToString() ?? fallback;
         private static int GetInt(Dictionary<string, object> obj, string key, int fallback = 0) => GetValue(obj, key) == null ? fallback : Convert.ToInt32(GetValue(obj, key), CultureInfo.InvariantCulture);
-        private static float GetFloat(Dictionary<string, object> obj, string key, float fallback = 0.0f) => GetValue(obj, key) == null ? fallback : Convert.ToSingle(GetValue(obj, key), CultureInfo.InvariantCulture);
         private static bool GetBool(Dictionary<string, object> obj, string key) => GetValue(obj, key) is bool b && b;
 
         private sealed class ModelSpec
         {
-            public string Id;
             public string BinPath;
             public string ModelName;
-            public string ModelType = "litert";
-            public string ModelTarget = "npu";
-            public int CpuTargetNumThreads = 1;
-            public bool HasCpuTargetNumThreads;
-
-            public ModelSpec Clone()
-            {
-                return new ModelSpec
-                {
-                    Id = Id,
-                    BinPath = BinPath,
-                    ModelName = ModelName,
-                    ModelType = ModelType,
-                    ModelTarget = ModelTarget,
-                    CpuTargetNumThreads = CpuTargetNumThreads,
-                    HasCpuTargetNumThreads = HasCpuTargetNumThreads
-                };
-            }
+            public string ModelType;
+            public string ModelTarget;
+            public int CpuTargetNumThreads;
         }
 
         private static class MiniJson

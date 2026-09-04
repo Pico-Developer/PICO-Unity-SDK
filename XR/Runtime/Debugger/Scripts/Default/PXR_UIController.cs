@@ -9,7 +9,6 @@ copyright law. Dissemination of this information or reproduction of this
 material is strictly forbidden unless prior written permission is obtained from
 PICO Technology Co., Ltd. 
 *******************************************************************************/
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
@@ -23,6 +22,7 @@ namespace ByteDance.PICO.Debugger
         private Transform _camera;
         private float distance;
         private StartPosiion state;
+
         public void Awake()
         {
             if (config == null)
@@ -38,10 +38,15 @@ namespace ByteDance.PICO.Debugger
         }
         private void Init()
         {
-            _camera = Camera.main.transform;
+            _camera = Camera.main != null ? Camera.main.transform : null;
             state = config.startPosition;
             distance = GetDistance();
+            if (_camera != null)
+            {
+                ResetTransform();
+            }
         }
+
         public float GetDistance()
         {
             return state switch
@@ -54,17 +59,68 @@ namespace ByteDance.PICO.Debugger
         }
         private void OnEnable()
         {
+            if (_camera == null) return;
             ResetTransform();
         }
         // Update is called once per frame
         private void ResetTransform()
         {
+            if (_camera == null) return;
             origin = _camera.position;
             Vector3 forward = _camera.transform.forward;
             forward.y = 0;
             forward = forward.normalized;
             transform.position = origin + distance * forward;
             transform.forward = transform.position - origin;
+        }
+
+        /// <summary>
+        /// Returns true if the given GameObject is the debugger's camera itself
+        /// or one of its ancestors in the scene hierarchy. Prevents users from
+        /// disabling nodes the debugger camera depends on (bug 7342935089).
+        ///
+        /// Walks up from the camera Transform to root on every call, so it
+        /// always reflects the current hierarchy — no stale cache.
+        /// </summary>
+        public static bool IsCameraAncestor(GameObject go)
+        {
+            if (go == null) return false;
+
+            // Use the instance-level _camera captured in Init(); fall back to
+            // Camera.main if the instance hasn't been created yet or the
+            // captured reference was destroyed.
+            Transform cam = null;
+            if (Instance != null)
+            {
+                cam = Instance._camera;
+            }
+            if (cam == null)
+            {
+                Camera mainCam = Camera.main;
+                cam = mainCam != null ? mainCam.transform : null;
+            }
+            if (cam == null) return false;
+
+#if UNITY_6000_4_OR_NEWER
+            EntityId targetId = go.GetEntityId();
+            var node = cam;
+            while (node != null)
+            {
+                if (node.gameObject.GetEntityId() == targetId)
+                    return true;
+                node = node.parent;
+            }
+#else
+            int targetId = go.GetInstanceID();
+            var node = cam;
+            while (node != null)
+            {
+                if (node.gameObject.GetInstanceID() == targetId)
+                    return true;
+                node = node.parent;
+            }
+#endif
+            return false;
         }
     }
 }

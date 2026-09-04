@@ -959,7 +959,7 @@ namespace ByteDance.PICO.XR.Editor
         {
             "https://github.com/Pico-Developer/gltf-exporter.git?path=package/com.plattar.unitygltf#master",
             "https://github.com/Pico-Developer/usd-unity-sdk.git?path=package/com.unity.formats.usd#dev",
-            "https://github.com/Pico-Developer/PICO-Unity-SDK.git?path=/SpatialAdapter#main"
+            "SpatialAdapter"
         };
 
 
@@ -976,7 +976,7 @@ If automatic installation fails, please add the packages manually in the followi
 2. USD Unity SDK
    https://github.com/Pico-Developer/usd-unity-sdk.git?path=package/com.unity.formats.usd#dev
 3. PICO Spatial Adapter Runtime
-   SpatialAdapter/SpatialAdapter-Runtime-Package/package.json";
+   SpatialAdapter/package.json";
 
 
         public static bool IsLocalPackageInstalled(string packageName)

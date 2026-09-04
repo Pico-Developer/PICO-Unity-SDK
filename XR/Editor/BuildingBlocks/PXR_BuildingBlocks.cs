@@ -11,6 +11,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Inputs;
 using UnityEngine.XR.Interaction.Toolkit.UI;
@@ -71,8 +72,8 @@ namespace ByteDance.PICO.XR.Editor
         public bool IsEnabled => true;
         public string Tooltip => k_Tooltip;
 
-        static string controllerLeftPath = PXR_Utils.sdkPackageName + "Assets/Resources/Prefabs/LeftControllerModel.prefab";
-        static string controllerRightPath = PXR_Utils.sdkPackageName + "Assets/Resources/Prefabs/RightControllerModel.prefab";
+        static string controllerLeftPath = PXR_Utils.sdkPackageName + "Resources/Prefabs/LeftControllerModel.prefab";
+        static string controllerRightPath = PXR_Utils.sdkPackageName + "Resources/Prefabs/RightControllerModel.prefab";
         static string xrOriginName = $"{PXR_Utils.BuildingBlock} {k_Id} XR Origin (XR Rig)";
         static string controllerLeftName = "Left Controller";
         static string controllerRightName = "Right Controller";
@@ -498,8 +499,8 @@ namespace ByteDance.PICO.XR.Editor
         public string IconPath => k_IconPath;
         public bool IsEnabled => true;
         public string Tooltip => k_Tooltip;
-        static string handLeftPath = PXR_Utils.sdkPackageName + "Assets/Resources/Prefabs/HandLeft.prefab";
-        static string handRightPath = PXR_Utils.sdkPackageName + "Assets/Resources/Prefabs/HandRight.prefab";
+        static string handLeftPath = PXR_Utils.sdkPackageName + "Resources/Prefabs/HandLeft.prefab";
+        static string handRightPath = PXR_Utils.sdkPackageName + "Resources/Prefabs/HandRight.prefab";
         static string xrOriginName = $"{PXR_Utils.BuildingBlock} {k_Id} XR Origin (XR Rig)";
         static string handLeftName = $"{PXR_Utils.BuildingBlock} {k_Id} Left";
         static string handRightName = $"{PXR_Utils.BuildingBlock} {k_Id} Right";
@@ -730,8 +731,8 @@ namespace ByteDance.PICO.XR.Editor
         public bool IsEnabled => true;
         public string Tooltip => k_Tooltip;
 
-        static string handLeftPath = PXR_Utils.sdkPackageName + "Assets/Resources/Hand/Models/Hand_L.fbx";
-        static string handRightPath = PXR_Utils.sdkPackageName + "Assets/Resources/Hand/Models/Hand_R.fbx";
+        static string handLeftPath = PXR_Utils.sdkPackageName + "Resources/Hand/Models/Hand_L.fbx";
+        static string handRightPath = PXR_Utils.sdkPackageName + "Resources/Hand/Models/Hand_R.fbx";
 
 #if PICO_MS_SDK
         static string isTrackedLeftHandPath = "<PicoAimHand>{LeftHand}/isTracked";
@@ -1609,8 +1610,8 @@ namespace ByteDance.PICO.XR.Editor
         public bool IsEnabled => true;
         public string Tooltip => k_Tooltip;
 
-        static string handLeftPath = PXR_Utils.sdkPackageName + "Assets/Resources/Hand/Models/Hand_L.fbx";
-        static string handRightPath = PXR_Utils.sdkPackageName + "Assets/Resources/Hand/Models/Hand_R.fbx";
+        static string handLeftPath = PXR_Utils.sdkPackageName + "Resources/Hand/Models/Hand_L.fbx";
+        static string handRightPath = PXR_Utils.sdkPackageName + "Resources/Hand/Models/Hand_R.fbx";
         // XRI LeftHand
         static string positionLeftHandPath = "<HandInteraction>{LeftHand}/devicePose/position";
         static string rotationLeftHandPath = "<HandInteraction>{LeftHand}/devicePose/rotation";
@@ -2834,9 +2835,9 @@ namespace ByteDance.PICO.XR.Editor
         const int k_SectionPriority = 9;
 
 #if ENABLE_PICO_OPENXR_SDK
-        static string cameraEffectPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/CameraEffectOpenXR.prefab";
+        static string cameraEffectPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/CameraEffectOpenXR.prefab";
 #else
-        static string cameraEffectPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/CameraEffect.prefab";
+        static string cameraEffectPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/CameraEffect.prefab";
 #endif
         static string cameraEffectName = $"{PXR_Utils.BuildingBlock} {k_Id}";
         static string xrOriginName = $"{PXR_Utils.BuildingBlock} {k_Id} XR Origin (XR Rig)";
@@ -3030,11 +3031,11 @@ namespace ByteDance.PICO.XR.Editor
 
 #endregion
 
-#region PICO Motion Tracking
+#region PICO Motion Tracker
     [BuildingBlockItem(Priority = k_SectionPriority)]
     class PXR_MotionTrackingSection : IBuildingBlockSection
     {
-        public const string k_SectionId = "PICO Motion Tracking";
+        public const string k_SectionId = "PICO Motion Tracker";
         public string SectionId => k_SectionId;
 
         const string k_SectionIconPath = "Building/Block/Section/Icon/Path";
@@ -3046,7 +3047,7 @@ namespace ByteDance.PICO.XR.Editor
             new PXR_BuildingBlocksBodyTracking(),
             new PXR_BuildingBlocksBodyTrackingDebug(),
 #if !ENABLE_PICO_OPENXR_SDK
-            new PXR_BuildingBlocksObjectTracking(),
+            new PXR_BuildingBlocksMotionTracking(),
 #endif
         };
 
@@ -3064,7 +3065,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : Body Tracking can be set with one click through this block, and 24 cubes will be used to display the tracking status of 24 human body joints in real time. ";
         const int k_SectionPriority = 10;
-        static string bodyTrackingPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/BodyTracking.prefab";
+        static string bodyTrackingPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/BodyTracking.prefab";
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
         public string Id => k_Id;
@@ -3130,7 +3131,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : If the Avatar model you are using does not match the 24-joint data direction of PICO, you can adapt it by rotating the X, Y, and Z axes of the specified joint data. ";
         const int k_SectionPriority = 11;
-        static string bodyTrackingPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/BodyTrackingDebug.prefab";
+        static string bodyTrackingPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/BodyTrackingDebug.prefab";
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
         public string Id => k_Id;
@@ -3192,12 +3193,12 @@ namespace ByteDance.PICO.XR.Editor
     }
 
 #if !ENABLE_PICO_OPENXR_SDK
-    class PXR_BuildingBlocksObjectTracking : IBuildingBlock
+    class PXR_BuildingBlocksMotionTracking : IBuildingBlock
     {
-        const string k_Id = "PICO Object Tracking";
+        const string k_Id = "PICO Motion Tracking";
         const string k_BuildingBlockPath = PXR_Utils.BuildingBlockPathO + PXR_MotionTrackingSection.k_SectionId + "/" + k_Id;
         const string k_IconPath = "buildingblockIcon";
-        const string k_Tooltip = k_Id + " : Object Tracking can be set with one click through this block. ";
+        const string k_Tooltip = k_Id + " : Motion Tracking can be set with one click through this block. ";
         const int k_SectionPriority = 12;
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
@@ -3222,9 +3223,9 @@ namespace ByteDance.PICO.XR.Editor
 
                 Camera mainCamera = PXR_Utils.GetMainCameraForXROrigin();
 
-                if (!buildingBlockGO.GetComponent<PXR_ObjectTrackingBlock>())
+                if (!buildingBlockGO.GetComponent<PXR_MotionTrackingBlock>())
                 {
-                    buildingBlockGO.AddComponent<PXR_ObjectTrackingBlock>();
+                    buildingBlockGO.AddComponent<PXR_MotionTrackingBlock>();
                 }
 
                 buildingBlockGO.name = k_BuildingBlocksGOName;
@@ -3286,7 +3287,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : A free field is a sound field that only simulates the location of the audio source while ignoring all environmental acoustic phenomena such as reflection sounds.";
         const int k_SectionPriority = 13;
-        static string freeFieldPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/SpatialAudioFreeField.prefab";
+        static string freeFieldPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/SpatialAudioFreeField.prefab";
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
         public string Id => k_Id;
@@ -3351,7 +3352,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : Ambisonics is a full-sphere surround sound effect that covers audio sources on the horizontal plane and below and above the listener, thereby giving the listener a highly immersive audio experience.";
         const int k_SectionPriority = 14;
-        static string patialAudioAmbisonicsPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/SpatialAudioAmbisonics.prefab";
+        static string patialAudioAmbisonicsPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/SpatialAudioAmbisonics.prefab";
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
         public string Id => k_Id;
@@ -3471,8 +3472,8 @@ namespace ByteDance.PICO.XR.Editor
 
         static string k_BuildingBlocksCanvasGOName = $"{PXR_Utils.BuildingBlock} {k_Id} Manager";
         static string k_BuildingBlocksPreviewGOName = $"{PXR_Utils.BuildingBlock} {k_Id} Preview";
-        static string spatialAnchorManagerPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/SpatialAnchorManager.prefab";
-        static string spatialAnchorPreviewPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/SpatialAnchorPreview.prefab";
+        static string spatialAnchorManagerPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/SpatialAnchorManager.prefab";
+        static string spatialAnchorPreviewPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/SpatialAnchorPreview.prefab";
 
         static GameObject spatialAnchorPreviewGO;
 
@@ -3574,7 +3575,7 @@ namespace ByteDance.PICO.XR.Editor
         const int k_SectionPriority = 16;
 
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
-        static string meshPrefabPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/MeshPrefab.prefab";
+        static string meshPrefabPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/MeshPrefab.prefab";
 
         public string Id => k_Id;
         public string IconPath => k_IconPath;
@@ -3668,9 +3669,9 @@ namespace ByteDance.PICO.XR.Editor
         const int k_SectionPriority = 17;
 
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
-        static string meshPrefabPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/MeshPrefab.prefab";
-        static string box2DPrefabPath = PXR_Utils.sdkPackageName + "Assets/Resources/Prefabs/Box2D.prefab";
-        static string box3DPrefabPath = PXR_Utils.sdkPackageName + "Assets/Resources/Prefabs/Box3D.prefab";
+        static string meshPrefabPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/MeshPrefab.prefab";
+        static string box2DPrefabPath = PXR_Utils.sdkPackageName + "Resources/Prefabs/Box2D.prefab";
+        static string box3DPrefabPath = PXR_Utils.sdkPackageName + "Resources/Prefabs/Box3D.prefab";
 
         public string Id => k_Id;
         public string IconPath => k_IconPath;
@@ -3780,7 +3781,7 @@ namespace ByteDance.PICO.XR.Editor
         const string k_Tooltip = k_Id + " : Video seethrought can be set up and enabled with one click.";
         const int k_SectionPriority = 18;
         //static string xrOriginName = $"{PXR_Utils.BuildingBlock} {k_Id} XR Origin (XR Rig)";
-        static string texturePath = PXR_Utils.sdkPackageName + "Assets/Resources/grid.jpg";
+        static string texturePath = PXR_Utils.sdkPackageName + "Resources/grid.jpg";
 
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
@@ -3866,8 +3867,8 @@ namespace ByteDance.PICO.XR.Editor
         const string k_IconPath = "buildingblockIcon";
         const string k_Tooltip = k_Id + " : Video seethrought can be set up and enabled with one click.";
         const int k_SectionPriority = 19;
-        static string texturePath = PXR_Utils.sdkPackageName + "Assets/Resources/grid.jpg";
-        static string materialPath = PXR_Utils.sdkPackageName + "Assets/Resources/Materials/UnderlayHole.mat";
+        static string texturePath = PXR_Utils.sdkPackageName + "Resources/grid.jpg";
+        static string materialPath = PXR_Utils.sdkPackageName + "Resources/Materials/UnderlayHole.mat";
 
         static string k_BuildingBlocksGOName = $"{PXR_Utils.BuildingBlock} {k_Id}";
 
@@ -4237,6 +4238,8 @@ class PXR_CameraPackSection : IBuildingBlockSection
     {
         new PXR_BuildingBlocksAddCameraPack(),
         new PXR_BuildingBlocksAddCameraPackVisualizer(),
+        new PXR_BuildingBlocksAddStereoCameraPackVisualizer(),
+        new PXR_BuildingBlocksAddStereoTimestampMatchedCameraPackVisualizer(),
     };
 
     public IEnumerable<IBuildingBlock> GetBuildingBlocks()
@@ -4323,8 +4326,8 @@ class PXR_BuildingBlocksAddCameraPackVisualizer : IBuildingBlock
     public bool IsEnabled => true;
     public string Tooltip => k_Tooltip;
 
-    // Use Assets path as provided by user (converted to relative)
-    static string visualizerPrefabPath = PXR_Utils.sdkPackageName + "Assets/BuildingBlocks/Prefabs/CameraPackVisualizer.prefab";
+    // Use package-relative path.
+    static string visualizerPrefabPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/CameraPackVisualizer.prefab";
     static string visualizerName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Visualizer";
 
     public void ExecuteBuildingBlock() => DoInterestingStuff();
@@ -4433,6 +4436,602 @@ class PXR_BuildingBlocksAddCameraPackVisualizer : IBuildingBlock
         if (xrOrigin != null)
         {
             EditorSceneManager.MarkSceneDirty(xrOrigin.scene);
+        }
+    }
+}
+
+class PXR_BuildingBlocksAddStereoCameraPackVisualizer : IBuildingBlock
+{
+    const string k_Id = "Stereo Camera Pack Visualizer";
+    const string k_BuildingBlockPath = PXR_Utils.BuildingBlockPathO + PXR_CameraPackSection.k_SectionId + "/" + k_Id;
+    const string k_IconPath = "buildingblockIcon";
+    const string k_Tooltip = k_Id + " : Add left and right Camera Pack visualizers and link them to separate Camera Pack managers.";
+    const int k_SectionPriority = 24;
+
+    public string Id => k_Id;
+    public string IconPath => k_IconPath;
+    public bool IsEnabled => true;
+    public string Tooltip => k_Tooltip;
+
+    static string cameraPackPrefabPath = PXR_Utils.sdkPackageName + "CameraPack/Prefabs/PXRCamTextureManager.prefab";
+    static string visualizerPrefabPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/CameraPackVisualizer.prefab";
+    static string xrOriginName = $"{PXR_Utils.BuildingBlock} Stereo Camera Pack XR Origin (XR Rig)";
+    static string leftCameraPackName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack PXRCamTextureManager Left";
+    static string rightCameraPackName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack PXRCamTextureManager Right";
+    static string leftVisualizerName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Visualizer Left";
+    static string rightVisualizerName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Visualizer Right";
+
+    public void ExecuteBuildingBlock() => DoInterestingStuff();
+
+    [MenuItem(k_BuildingBlockPath, false, k_SectionPriority)]
+    public static void ExecuteMenuItem(MenuCommand command) => DoInterestingStuff();
+
+    [MenuItem(PXR_Utils.BuildingBlockPathP + PXR_CameraPackSection.k_SectionId + "/" + k_Id, false, k_SectionPriority)]
+    public static void ExecuteMenuItemHierarchy(MenuCommand command) => DoInterestingStuff();
+
+    static void DoInterestingStuff()
+    {
+        PXR_AppLog.PXR_OnEvent(PXR_AppLog.strBuildingBlocks, PXR_AppLog.strBuildingBlocks_PICOCameraPack);
+
+        GameObject xrOrigin = PXR_Utils.CheckAndCreateXROrigin();
+        if (xrOrigin == null)
+        {
+            Debug.LogError("Could not create or find XR Origin for Stereo Camera Pack Visualizer.");
+            return;
+        }
+
+        SetFloorTrackingOrigin(xrOrigin);
+
+        Material leftMaterial = CreateVisualizerMaterial("CameraPackVisualizerMaterialLeft");
+        Material rightMaterial = CreateVisualizerMaterial("CameraPackVisualizerMaterialRight");
+
+        GameObject leftManager = FindOrCreateCameraPackManager(leftCameraPackName, xrOrigin);
+        GameObject rightManager = FindOrCreateCameraPackManager(rightCameraPackName, xrOrigin);
+        if (leftManager == null || rightManager == null)
+        {
+            return;
+        }
+
+        ConfigureCameraPackManager(leftManager, "Left", leftMaterial);
+        ConfigureCameraPackManager(rightManager, "Right", rightMaterial);
+
+        GameObject leftVisualizer = FindOrCreateVisualizer(leftVisualizerName, leftManager.transform, new Vector3(-0.75f, 1.0f, 1.5f), leftMaterial);
+        GameObject rightVisualizer = FindOrCreateVisualizer(rightVisualizerName, rightManager.transform, new Vector3(0.75f, 1.0f, 1.5f), rightMaterial);
+
+        if (rightVisualizer != null)
+        {
+            Selection.activeGameObject = rightVisualizer;
+        }
+        else if (leftVisualizer != null)
+        {
+            Selection.activeGameObject = leftVisualizer;
+        }
+
+        xrOrigin.name = xrOriginName;
+        EditorSceneManager.MarkSceneDirty(xrOrigin.scene);
+        EditorSceneManager.SaveScene(xrOrigin.scene);
+    }
+
+    static void SetFloorTrackingOrigin(GameObject xrOrigin)
+    {
+        var origin = xrOrigin.GetComponent<XROrigin>();
+        if (origin == null)
+        {
+            return;
+        }
+
+        Undo.RecordObject(origin, "Set Tracking Origin Mode");
+        origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
+    }
+
+    static GameObject FindOrCreateCameraPackManager(string cameraPackName, GameObject xrOrigin)
+    {
+        Transform existingManager = PXR_Utils.FindComponentsInScene<Transform>()
+            .FirstOrDefault(component => component.transform.name == cameraPackName);
+        if (existingManager != null)
+        {
+            existingManager.gameObject.SetActive(true);
+            return existingManager.gameObject;
+        }
+
+        GameObject cameraPack = PrefabUtility.LoadPrefabContents(cameraPackPrefabPath);
+        if (cameraPack == null)
+        {
+            Debug.LogError("Could not load camera pack prefab at " + cameraPackPrefabPath);
+            return null;
+        }
+
+        Undo.RegisterCreatedObjectUndo(cameraPack, "Create Camera Pack Manager");
+        Undo.SetTransformParent(cameraPack.transform, xrOrigin.transform, true, "Parent to XR Origin");
+        cameraPack.transform.localPosition = Vector3.zero;
+        cameraPack.transform.localRotation = Quaternion.identity;
+        cameraPack.transform.localScale = Vector3.one;
+        cameraPack.SetActive(true);
+        cameraPack.name = cameraPackName;
+        cameraPack.transform.SetParent(null);
+        return cameraPack;
+    }
+
+    static GameObject FindOrCreateVisualizer(string visualizerName, Transform parent, Vector3 localPosition, Material material)
+    {
+        Transform existingVisualizer = PXR_Utils.FindComponentsInScene<Transform>()
+            .FirstOrDefault(component => component.transform.name == visualizerName);
+        GameObject visualizer = existingVisualizer != null
+            ? existingVisualizer.gameObject
+            : PrefabUtility.LoadPrefabContents(visualizerPrefabPath);
+
+        if (visualizer == null)
+        {
+            Debug.LogError("Could not load visualizer prefab at " + visualizerPrefabPath);
+            return null;
+        }
+
+        if (existingVisualizer == null)
+        {
+            Undo.RegisterCreatedObjectUndo(visualizer, "Create Camera Pack Visualizer");
+        }
+
+        visualizer.name = visualizerName;
+        Undo.SetTransformParent(visualizer.transform, parent, false, "Parent to Camera Pack Manager");
+        visualizer.transform.localPosition = localPosition;
+        visualizer.transform.localRotation = Quaternion.identity;
+        visualizer.SetActive(true);
+
+        MeshRenderer renderer = visualizer.GetComponent<MeshRenderer>();
+        if (renderer != null)
+        {
+            Undo.RecordObject(renderer, "Assign Material");
+            renderer.material = material;
+        }
+
+        return visualizer;
+    }
+
+    static Material CreateVisualizerMaterial(string materialName)
+    {
+        Material material = new Material(Shader.Find("Unlit/Texture"));
+        material.name = materialName;
+        return material;
+    }
+
+    static void ConfigureCameraPackManager(GameObject cameraPackManager, string eyeName, Material targetMaterial)
+    {
+        var camPackAssembly = System.AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(assembly => assembly.GetName().Name == "ByteDance.PICO.CameraPack");
+
+        if (camPackAssembly == null)
+        {
+            Debug.LogError("ByteDance.PICO.CameraPack assembly not found.");
+            return;
+        }
+
+        var managerType = camPackAssembly.GetType("ByteDance.PICO.CameraPack.PXR_CamTextureManager");
+        if (managerType == null)
+        {
+            Debug.LogError("PXR_CamTextureManager type not found.");
+            return;
+        }
+
+        var camManager = cameraPackManager.GetComponent(managerType);
+        if (camManager == null)
+        {
+            camManager = cameraPackManager.GetComponentInChildren(managerType, true);
+        }
+
+        if (camManager == null)
+        {
+            Debug.LogError("PXR_CamTextureManager not found on " + cameraPackManager.name + ".");
+            return;
+        }
+
+        Undo.RecordObject(camManager, "Configure Camera Pack Manager");
+
+        var eyeField = managerType.GetField("Eye");
+        if (eyeField != null)
+        {
+            eyeField.SetValue(camManager, System.Enum.Parse(eyeField.FieldType, eyeName));
+        }
+        else
+        {
+            Debug.LogError("Eye field not found on PXR_CamTextureManager.");
+        }
+
+        var targetMaterialField = managerType.GetField("TargetMaterial");
+        if (targetMaterialField != null)
+        {
+            targetMaterialField.SetValue(camManager, targetMaterial);
+        }
+        else
+        {
+            Debug.LogError("TargetMaterial field not found on PXR_CamTextureManager.");
+        }
+    }
+}
+
+class PXR_BuildingBlocksAddStereoTimestampMatchedCameraPackVisualizer : IBuildingBlock
+{
+    const string k_Id = "Stereo Timestamp Matched Camera Pack Visualizer";
+    const string k_BuildingBlockPath = PXR_Utils.BuildingBlockPathO + PXR_CameraPackSection.k_SectionId + "/" + k_Id;
+    const string k_IconPath = "buildingblockIcon";
+    const string k_Tooltip = k_Id + " : Match left and right camera frames by timestamp, stitch matched frames, and display frame statistics.";
+    const int k_SectionPriority = 25;
+
+    public string Id => k_Id;
+    public string IconPath => k_IconPath;
+    public bool IsEnabled => true;
+    public string Tooltip => k_Tooltip;
+
+    static string cameraPackPrefabPath = PXR_Utils.sdkPackageName + "CameraPack/Prefabs/PXRCamTextureManager.prefab";
+    static string visualizerPrefabPath = PXR_Utils.sdkPackageName + "BuildingBlocks/Prefabs/CameraPackVisualizer.prefab";
+    static string xrOriginName = $"{PXR_Utils.BuildingBlock} Stereo Timestamp Matched Camera Pack XR Origin (XR Rig)";
+    static string leftCameraPackName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Timestamp Matched PXRCamTextureManager Left";
+    static string rightCameraPackName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Timestamp Matched PXRCamTextureManager Right";
+    static string matcherName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Timestamp Matched Matcher";
+    static string visualizerName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Timestamp Matched Visualizer";
+    static string statsName = $"{PXR_Utils.BuildingBlock} PICO Camera Pack Timestamp Matched Stats";
+
+    public void ExecuteBuildingBlock() => DoInterestingStuff();
+
+    [MenuItem(k_BuildingBlockPath, false, k_SectionPriority)]
+    public static void ExecuteMenuItem(MenuCommand command) => DoInterestingStuff();
+
+    [MenuItem(PXR_Utils.BuildingBlockPathP + PXR_CameraPackSection.k_SectionId + "/" + k_Id, false, k_SectionPriority)]
+    public static void ExecuteMenuItemHierarchy(MenuCommand command) => DoInterestingStuff();
+
+    static void DoInterestingStuff()
+    {
+        PXR_AppLog.PXR_OnEvent(PXR_AppLog.strBuildingBlocks, PXR_AppLog.strBuildingBlocks_PICOCameraPack);
+
+        GameObject xrOrigin = PXR_Utils.CheckAndCreateXROrigin();
+        if (xrOrigin == null)
+        {
+            Debug.LogError("Could not create or find XR Origin for Stereo Timestamp Matched Camera Pack Visualizer.");
+            return;
+        }
+
+        SetFloorTrackingOrigin(xrOrigin);
+
+        Material targetMaterial = CreateVisualizerMaterial("CameraPackTimestampMatchedVisualizerMaterial");
+        GameObject leftManager = FindOrCreateCameraPackManager(leftCameraPackName, xrOrigin);
+        GameObject rightManager = FindOrCreateCameraPackManager(rightCameraPackName, xrOrigin);
+        if (leftManager == null || rightManager == null)
+        {
+            return;
+        }
+
+        ConfigureCameraPackManager(leftManager, "Left", null);
+        ConfigureCameraPackManager(rightManager, "Right", null);
+
+        GameObject matcherGO = FindOrCreateRootObject(matcherName, xrOrigin.transform.position + xrOrigin.transform.forward * 1.5f + xrOrigin.transform.up, xrOrigin.transform.rotation);
+        GameObject visualizerGO = FindOrCreateVisualizer(visualizerName, matcherGO.transform, targetMaterial);
+        Text statsText = FindOrCreateStatsText(statsName, matcherGO.transform);
+        ConfigureMatcher(matcherGO, leftManager, rightManager, targetMaterial, statsText);
+
+        if (visualizerGO != null)
+        {
+            Selection.activeGameObject = visualizerGO;
+        }
+        else
+        {
+            Selection.activeGameObject = matcherGO;
+        }
+
+        xrOrigin.name = xrOriginName;
+        EditorSceneManager.MarkSceneDirty(xrOrigin.scene);
+        EditorSceneManager.SaveScene(xrOrigin.scene);
+    }
+
+    static void SetFloorTrackingOrigin(GameObject xrOrigin)
+    {
+        var origin = xrOrigin.GetComponent<XROrigin>();
+        if (origin == null)
+        {
+            return;
+        }
+
+        Undo.RecordObject(origin, "Set Tracking Origin Mode");
+        origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
+    }
+
+    static GameObject FindOrCreateRootObject(string objectName, Vector3 position, Quaternion rotation)
+    {
+        Transform existingRoot = PXR_Utils.FindComponentsInScene<Transform>()
+            .FirstOrDefault(component => component.transform.name == objectName);
+        if (existingRoot != null)
+        {
+            existingRoot.gameObject.SetActive(true);
+            existingRoot.position = position;
+            existingRoot.rotation = rotation;
+            return existingRoot.gameObject;
+        }
+
+        GameObject root = new GameObject(objectName);
+        Undo.RegisterCreatedObjectUndo(root, "Create Timestamp Matched Camera Pack Root");
+        root.transform.position = position;
+        root.transform.rotation = rotation;
+        root.transform.localScale = Vector3.one;
+        return root;
+    }
+
+    static GameObject FindOrCreateCameraPackManager(string cameraPackName, GameObject xrOrigin)
+    {
+        Transform existingManager = PXR_Utils.FindComponentsInScene<Transform>()
+            .FirstOrDefault(component => component.transform.name == cameraPackName);
+        if (existingManager != null)
+        {
+            existingManager.gameObject.SetActive(true);
+            return existingManager.gameObject;
+        }
+
+        GameObject cameraPack = PrefabUtility.LoadPrefabContents(cameraPackPrefabPath);
+        if (cameraPack == null)
+        {
+            Debug.LogError("Could not load camera pack prefab at " + cameraPackPrefabPath);
+            return null;
+        }
+
+        Undo.RegisterCreatedObjectUndo(cameraPack, "Create Camera Pack Manager");
+        Undo.SetTransformParent(cameraPack.transform, xrOrigin.transform, true, "Parent to XR Origin");
+        cameraPack.transform.localPosition = Vector3.zero;
+        cameraPack.transform.localRotation = Quaternion.identity;
+        cameraPack.transform.localScale = Vector3.one;
+        cameraPack.SetActive(true);
+        cameraPack.name = cameraPackName;
+        cameraPack.transform.SetParent(null);
+        return cameraPack;
+    }
+
+    static GameObject FindOrCreateVisualizer(string objectName, Transform parent, Material material)
+    {
+        Transform existingVisualizer = PXR_Utils.FindComponentsInScene<Transform>()
+            .FirstOrDefault(component => component.transform.name == objectName);
+        GameObject visualizer = existingVisualizer != null
+            ? existingVisualizer.gameObject
+            : PrefabUtility.LoadPrefabContents(visualizerPrefabPath);
+
+        if (visualizer == null)
+        {
+            Debug.LogError("Could not load visualizer prefab at " + visualizerPrefabPath);
+            return null;
+        }
+
+        if (existingVisualizer == null)
+        {
+            Undo.RegisterCreatedObjectUndo(visualizer, "Create Timestamp Matched Camera Pack Visualizer");
+        }
+
+        visualizer.name = objectName;
+        Undo.SetTransformParent(visualizer.transform, parent, false, "Parent to Timestamp Matched Camera Pack Root");
+        visualizer.transform.localPosition = Vector3.zero;
+        visualizer.transform.localRotation = Quaternion.identity;
+        visualizer.transform.localScale = new Vector3(2.666f, 1f, 1f);
+        visualizer.SetActive(true);
+
+        MeshRenderer renderer = visualizer.GetComponent<MeshRenderer>();
+        if (renderer != null)
+        {
+            Undo.RecordObject(renderer, "Assign Material");
+            renderer.material = material;
+        }
+
+        return visualizer;
+    }
+
+    static Text FindOrCreateStatsText(string objectName, Transform parent)
+    {
+        Transform existingStats = PXR_Utils.FindComponentsInScene<Transform>()
+            .FirstOrDefault(component => component.transform.name == objectName);
+        if (existingStats != null)
+        {
+            existingStats.gameObject.SetActive(true);
+            return EnsureStatsText(existingStats.gameObject);
+        }
+
+        GameObject canvasGO = new GameObject(objectName, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        Undo.RegisterCreatedObjectUndo(canvasGO, "Create Camera Pack Stats Canvas");
+        Undo.SetTransformParent(canvasGO.transform, parent, false, "Parent to Timestamp Matched Camera Pack Root");
+        canvasGO.transform.localPosition = new Vector3(0f, -0.75f, 0f);
+        canvasGO.transform.localRotation = Quaternion.identity;
+        canvasGO.transform.localScale = Vector3.one * 0.002f;
+
+        Canvas canvas = canvasGO.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = PXR_Utils.GetMainCameraForXROrigin();
+
+        RectTransform canvasRect = canvasGO.GetComponent<RectTransform>();
+        canvasRect.sizeDelta = new Vector2(1200f, 360f);
+
+        GameObject textGO = new GameObject("Stats Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        Undo.RegisterCreatedObjectUndo(textGO, "Create Camera Pack Stats Text");
+        Undo.SetTransformParent(textGO.transform, canvasGO.transform, false, "Parent to Stats Canvas");
+
+        RectTransform textRect = textGO.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        Text text = textGO.GetComponent<Text>();
+        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        text.fontSize = 64;
+        text.alignment = TextAnchor.UpperLeft;
+        text.color = Color.white;
+        text.text = "Left Frames: 0\nRight Frames: 0\nMatched Frames: 0\nDropped Left: 0\nDropped Right: 0";
+        return text;
+    }
+
+    static Text EnsureStatsText(GameObject statsRoot)
+    {
+        Text existingText = statsRoot.GetComponentInChildren<Text>(true);
+        if (existingText != null)
+        {
+            existingText.gameObject.SetActive(true);
+            return existingText;
+        }
+
+        Canvas canvas = statsRoot.GetComponent<Canvas>();
+        if (canvas == null)
+        {
+            canvas = Undo.AddComponent<Canvas>(statsRoot);
+        }
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = PXR_Utils.GetMainCameraForXROrigin();
+
+        if (statsRoot.GetComponent<CanvasScaler>() == null)
+        {
+            Undo.AddComponent<CanvasScaler>(statsRoot);
+        }
+
+        if (statsRoot.GetComponent<GraphicRaycaster>() == null)
+        {
+            Undo.AddComponent<GraphicRaycaster>(statsRoot);
+        }
+
+        RectTransform canvasRect = statsRoot.GetComponent<RectTransform>();
+        if (canvasRect != null)
+        {
+            canvasRect.sizeDelta = new Vector2(1200f, 360f);
+        }
+
+        GameObject textGO = new GameObject("Stats Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        Undo.RegisterCreatedObjectUndo(textGO, "Create Camera Pack Stats Text");
+        Undo.SetTransformParent(textGO.transform, statsRoot.transform, false, "Parent to Stats Canvas");
+
+        RectTransform textRect = textGO.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        Text text = textGO.GetComponent<Text>();
+        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        text.fontSize = 64;
+        text.alignment = TextAnchor.UpperLeft;
+        text.color = Color.white;
+        text.text = "Left Frames: 0\nRight Frames: 0\nMatched Frames: 0\nDropped Left: 0\nDropped Right: 0";
+        return text;
+    }
+
+    static Material CreateVisualizerMaterial(string materialName)
+    {
+        Material material = new Material(Shader.Find("Unlit/Texture"));
+        material.name = materialName;
+        return material;
+    }
+
+    static void ConfigureCameraPackManager(GameObject cameraPackManager, string eyeName, Material targetMaterial)
+    {
+        var camPackAssembly = System.AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(assembly => assembly.GetName().Name == "ByteDance.PICO.CameraPack");
+
+        if (camPackAssembly == null)
+        {
+            Debug.LogError("ByteDance.PICO.CameraPack assembly not found.");
+            return;
+        }
+
+        var managerType = camPackAssembly.GetType("ByteDance.PICO.CameraPack.PXR_CamTextureManager");
+        if (managerType == null)
+        {
+            Debug.LogError("PXR_CamTextureManager type not found.");
+            return;
+        }
+
+        var camManager = FindCameraPackManagerComponent(cameraPackManager, managerType);
+        if (camManager == null)
+        {
+            Debug.LogError("PXR_CamTextureManager not found on " + cameraPackManager.name + ".");
+            return;
+        }
+
+        Undo.RecordObject(camManager, "Configure Camera Pack Manager");
+
+        var eyeField = managerType.GetField("Eye");
+        if (eyeField != null)
+        {
+            eyeField.SetValue(camManager, System.Enum.Parse(eyeField.FieldType, eyeName));
+        }
+
+        var targetMaterialField = managerType.GetField("TargetMaterial");
+        if (targetMaterialField != null)
+        {
+            targetMaterialField.SetValue(camManager, targetMaterial);
+        }
+    }
+
+    static Component FindCameraPackManagerComponent(GameObject cameraPackManager, System.Type managerType)
+    {
+        if (cameraPackManager == null || managerType == null)
+        {
+            return null;
+        }
+
+        Component managerComponent = cameraPackManager.GetComponent(managerType);
+        if (managerComponent == null)
+        {
+            managerComponent = cameraPackManager.GetComponentInChildren(managerType, true);
+        }
+
+        return managerComponent;
+    }
+
+    static void ConfigureMatcher(GameObject matcherGO, GameObject leftManager, GameObject rightManager, Material targetMaterial, Text statsText)
+    {
+        var camPackAssembly = System.AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(assembly => assembly.GetName().Name == "ByteDance.PICO.CameraPack");
+
+        if (camPackAssembly == null)
+        {
+            Debug.LogError("ByteDance.PICO.CameraPack assembly not found.");
+            return;
+        }
+
+        var managerType = camPackAssembly.GetType("ByteDance.PICO.CameraPack.PXR_CamTextureManager");
+        var matcherType = camPackAssembly.GetType("ByteDance.PICO.CameraPack.PXR_StereoCameraImageMatcher");
+        if (managerType == null || matcherType == null)
+        {
+            Debug.LogError("Camera Pack matcher types not found.");
+            return;
+        }
+
+        Component leftManagerComponent = FindCameraPackManagerComponent(leftManager, managerType);
+        Component rightManagerComponent = FindCameraPackManagerComponent(rightManager, managerType);
+        if (leftManagerComponent == null || rightManagerComponent == null)
+        {
+            Debug.LogError("PXR_CamTextureManager component not found for timestamp matched matcher.");
+            return;
+        }
+
+        var matcher = matcherGO.GetComponent(matcherType);
+        if (matcher == null)
+        {
+            matcher = Undo.AddComponent(matcherGO, matcherType);
+        }
+
+        Undo.RecordObject(matcher, "Configure Timestamp Matched Camera Pack Matcher");
+
+        var leftManagerField = matcherType.GetField("LeftManager");
+        if (leftManagerField != null)
+        {
+            leftManagerField.SetValue(matcher, leftManagerComponent);
+        }
+
+        var rightManagerField = matcherType.GetField("RightManager");
+        if (rightManagerField != null)
+        {
+            rightManagerField.SetValue(matcher, rightManagerComponent);
+        }
+
+        var targetMaterialField = matcherType.GetField("TargetMaterial");
+        if (targetMaterialField != null)
+        {
+            targetMaterialField.SetValue(matcher, targetMaterial);
+        }
+
+        var statsTextField = matcherType.GetField("StatsText");
+        if (statsTextField != null)
+        {
+            statsTextField.SetValue(matcher, statsText);
         }
     }
 }

@@ -53,6 +53,8 @@ namespace ByteDance.PICO.XR
         public bool environmentDepth;
         public bool lightEstimation;
         public PxrEnvironmentTextureResolution lightEstimationTextureResolution;
+        public bool objectTracking;
+        public bool keyboardPassthrough;
         #region Project Validation
         public bool arFoundation;
         public bool mrSafeguard;
@@ -124,6 +126,8 @@ namespace ByteDance.PICO.XR
                 projectConfig.environmentDepth = false;
                 projectConfig.lightEstimation = false;
                 projectConfig.lightEstimationTextureResolution = PxrEnvironmentTextureResolution.Size8x8;
+                projectConfig.objectTracking = false;
+                projectConfig.keyboardPassthrough = false;
                 if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android)
                 {
                     return projectConfig;

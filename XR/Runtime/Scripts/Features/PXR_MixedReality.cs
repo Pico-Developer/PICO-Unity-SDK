@@ -120,6 +120,305 @@ namespace ByteDance.PICO.XR
         }
 
         /// <summary>
+        /// Replaces the dynamic object types tracked by the running provider.
+        /// </summary>
+        public static PxrResult UpdateDynamicObjectTrackingConfig(params PxrDynamicObjectType[] trackingTypes)
+        {
+            return PXR_Plugin.MixedReality.UPxr_UpdateDynamicObjectTrackingConfig(trackingTypes);
+        }
+
+        /// <summary>
+        /// Queries the currently tracked dynamic objects.
+        /// </summary>
+        /// <remarks>
+        /// Call <see cref="DestroyDynamicObjectSnapshot"/> after reading component data.
+        /// </remarks>
+        public static async Task<(PxrResult result, ulong snapshotHandle, List<PxrQueriedSpatialEntityInfo> entities)>
+            QueryDynamicObjectsAsync(CancellationToken token = default)
+        {
+            var providerHandle = PXR_Plugin.MixedReality.DynamicObjectTrackingProviderHandle;
+            var queryResult = PXR_Plugin.MixedReality.UPxr_QueryDynamicObjectsAsync(out var future);
+            if (queryResult != PxrResult.SUCCESS)
+            {
+                return (queryResult, 0, new List<PxrQueriedSpatialEntityInfo>());
+            }
+
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                var pollResult = PXR_Plugin.MixedReality.UPxr_PollFuture(future, out var futureState);
+                if (pollResult != PxrResult.SUCCESS)
+                {
+                    return (pollResult, 0, new List<PxrQueriedSpatialEntityInfo>());
+                }
+                if (futureState == PxrFutureState.Ready)
+                {
+                    var completeResult = PXR_Plugin.MixedReality.UPxr_QuerySenseDataComplete(
+                        providerHandle,
+                        future,
+                        out var completion);
+                    if (completeResult != PxrResult.SUCCESS ||
+                        completion.futureResult != PxrResult.SUCCESS)
+                    {
+                        return (
+                            completeResult != PxrResult.SUCCESS
+                                ? completeResult
+                                : completion.futureResult,
+                            0,
+                            new List<PxrQueriedSpatialEntityInfo>());
+                    }
+
+                    var getResult = PXR_Plugin.MixedReality.UPxr_GetQueriedSenseData(
+                        providerHandle,
+                        completion.snapshotHandle,
+                        out var entities);
+                    if (getResult != PxrResult.SUCCESS)
+                    {
+                        PXR_Plugin.MixedReality.UPxr_DestroySenseDataQueryResult(
+                            completion.snapshotHandle);
+                        return (getResult, 0, entities);
+                    }
+                    return (PxrResult.SUCCESS, completion.snapshotHandle, entities);
+                }
+
+                await Task.Delay(11, token);
+            }
+        }
+
+        /// <summary>
+        /// Releases a snapshot returned by <see cref="QueryDynamicObjectsAsync"/>.
+        /// </summary>
+        public static PxrResult DestroyDynamicObjectSnapshot(ulong snapshotHandle)
+        {
+            return PXR_Plugin.MixedReality.UPxr_DestroySenseDataQueryResult(snapshotHandle);
+        }
+
+        /// <summary>
+        /// Queries the currently tracked dynamic objects and resolves their common component data.
+        /// </summary>
+        public static async Task<(PxrResult result, List<PxrDynamicObjectData> objects)>
+            QueryDynamicObjectDataAsync(CancellationToken token = default)
+        {
+            var (queryResult, snapshotHandle, entities) = await QueryDynamicObjectsAsync(token);
+            if (queryResult != PxrResult.SUCCESS)
+            {
+                return (queryResult, new List<PxrDynamicObjectData>());
+            }
+
+            var objects = new List<PxrDynamicObjectData>(entities.Count);
+            try
+            {
+                foreach (var entity in entities)
+                {
+                    var objectData = new PxrDynamicObjectData
+                    {
+                        uuid = ToGuid(entity.uuid),
+                        spatialEntity = entity.spatialEntity,
+                        time = entity.time,
+                        rotation = Quaternion.identity
+                    };
+
+                    var hasLocation = PXR_Plugin.MixedReality.UPxr_GetSpatialEntityLocationInfo(
+                            snapshotHandle,
+                            entity.spatialEntity,
+                            out var position,
+                            out var rotation) == PxrResult.SUCCESS;
+                    if (hasLocation)
+                    {
+                        objectData.position = position;
+                        objectData.rotation = rotation;
+                    }
+
+                    GetDynamicObjectInfo(
+                        snapshotHandle,
+                        entity.spatialEntity,
+                        out var objectType);
+                    objectData.objectType = objectType;
+
+                    GetPeripheralInfo(
+                        snapshotHandle,
+                        entity.spatialEntity,
+                        out var peripheralData);
+                    objectData.peripheralData = peripheralData;
+
+                    if (PXR_Plugin.MixedReality.UPxr_EnumerateSpatialEntityComponentTypes(
+                            snapshotHandle,
+                            entity.spatialEntity,
+                            out var componentTypes) == PxrResult.SUCCESS)
+                    {
+                        objectData.types = componentTypes;
+                    }
+
+                    if (objectData.types != null &&
+                        objectData.types.Contains(PxrSceneComponentType.Box3D) &&
+                        PXR_Plugin.MixedReality.UPxr_GetSpatialEntityBox3DInfo(
+                            snapshotHandle,
+                            entity.spatialEntity,
+                            out var box3DPosition,
+                            out var box3DRotation,
+                            out var box3DExtent) == PxrResult.SUCCESS)
+                    {
+                        var unityBox3DPosition = ConvertRightHandedPosition(box3DPosition);
+                        var unityBox3DRotation = ConvertRightHandedRotation(box3DRotation);
+                        if (!hasLocation)
+                        {
+                            objectData.position = unityBox3DPosition;
+                            objectData.rotation = unityBox3DRotation;
+                        }
+                        objectData.box3D = new PxrSceneBox3D
+                        {
+                            position = unityBox3DPosition,
+                            rotation = unityBox3DRotation,
+                            extent = box3DExtent
+                        };
+                    }
+
+                    if (objectData.types != null &&
+                        objectData.types.Contains(PxrSceneComponentType.Sphere) &&
+                        PXR_Plugin.MixedReality.UPxr_GetSpatialEntitySphereInfo(
+                            snapshotHandle,
+                            entity.spatialEntity,
+                            out var sphereRadius) == PxrResult.SUCCESS)
+                    {
+                        objectData.sphereRadius = sphereRadius;
+                    }
+
+                    if (IsPicoPeripheral(objectData))
+                    {
+                        if (GetPicoKeyboardInfo(
+                            snapshotHandle,
+                            entity.spatialEntity,
+                            out peripheralData,
+                            out var picoKeyboardData) == PxrResult.SUCCESS)
+                        {
+                            objectData.peripheralData = peripheralData;
+                            objectData.picoKeyboardData = picoKeyboardData;
+                        }
+                    }
+
+                    objects.Add(objectData);
+                }
+            }
+            finally
+            {
+                DestroyDynamicObjectSnapshot(snapshotHandle);
+            }
+
+            return (PxrResult.SUCCESS, objects);
+        }
+
+        private static Guid ToGuid(PxrUuid uuid)
+        {
+            byte[] bytes = new byte[16];
+            BitConverter.GetBytes(uuid.value0).CopyTo(bytes, 0);
+            BitConverter.GetBytes(uuid.value1).CopyTo(bytes, 8);
+            return new Guid(bytes);
+        }
+
+        private static Vector3 ConvertRightHandedPosition(Vector3 position)
+        {
+            return new Vector3(position.x, position.y, -position.z);
+        }
+
+        private static Quaternion ConvertRightHandedRotation(Quaternion rotation)
+        {
+            return new Quaternion(rotation.x, rotation.y, -rotation.z, -rotation.w);
+        }
+
+        private static bool IsPicoPeripheral(PxrDynamicObjectData objectData)
+        {
+            return objectData.objectType == PxrDynamicObjectType.PicoKeyboard ||
+                   objectData.objectType == PxrDynamicObjectType.PicoTouchpad ||
+                   (objectData.peripheralData.brand == PxrPeripheralBrand.Pico &&
+                    (objectData.peripheralData.category == PxrPeripheralCategory.LaptopKeyboard ||
+                     objectData.peripheralData.category == PxrPeripheralCategory.UncategorizedTouchpad));
+        }
+
+        /// <summary>
+        /// Gets the dynamic object type associated with a queried spatial entity.
+        /// </summary>
+        public static PxrResult GetDynamicObjectInfo(
+            ulong snapshotHandle,
+            ulong entity,
+            out PxrDynamicObjectType objectType)
+        {
+            return PXR_Plugin.MixedReality.UPxr_GetSpatialEntityDynamicObjectInfo(
+                snapshotHandle,
+                entity,
+                out objectType);
+        }
+
+        /// <summary>
+        /// Gets the peripheral metadata associated with a queried spatial entity.
+        /// </summary>
+        public static PxrResult GetPeripheralInfo(
+            ulong snapshotHandle,
+            ulong entity,
+            out XrPeripheralData peripheralData)
+        {
+            return PXR_Plugin.MixedReality.UPxr_GetSpatialEntityPeripheralInfo(
+                snapshotHandle,
+                entity,
+                out peripheralData);
+        }
+
+        /// <summary>
+        /// Gets the PICO keyboard metadata associated with a queried spatial entity.
+        /// </summary>
+        public static PxrResult GetPicoKeyboardInfo(
+            ulong snapshotHandle,
+            ulong entity,
+            out XrPeripheralData peripheralData,
+            out XrPeripheralPicoKeyboardData picoKeyboardData)
+        {
+            return PXR_Plugin.MixedReality.UPxr_GetSpatialEntityPicoKeyboardInfo(
+                snapshotHandle,
+                entity,
+                out peripheralData,
+                out picoKeyboardData);
+        }
+
+        /// <summary>
+        /// Enumerates the environment passthrough categories supported by the runtime.
+        /// </summary>
+        public static PxrResult EnumerateSupportedEnvironmentPassthroughTypes(
+            out PxrEnvironmentPassthroughType[] supportedTypes)
+        {
+            return PXR_Plugin.MixedReality.UPxr_EnumerateSupportedEnvironmentPassthroughTypes(
+                out supportedTypes);
+        }
+
+        /// <summary>
+        /// Requests that the runtime enable or disable passthrough for an environment category.
+        /// </summary>
+        public static PxrResult SetEnvironmentPassthroughPreference(
+            PxrEnvironmentPassthroughType passthroughType,
+            bool enabled)
+        {
+            return PXR_Plugin.MixedReality.UPxr_SetEnvironmentPassthroughPreference(
+                passthroughType,
+                enabled);
+        }
+
+        /// <summary>
+        /// Gets the passthrough state for standard and laptop keyboards.
+        /// </summary>
+        public static PxrResult GetKeyboardPassthroughState(
+            out PxrKeyboardPassthroughLevel level)
+        {
+            return PXR_Plugin.MixedReality.UPxr_GetKeyboardPassthroughState(out level);
+        }
+
+        /// <summary>
+        /// Gets the passthrough state for a PICO keyboard.
+        /// </summary>
+        public static PxrResult GetPicoKeyboardPassthroughState(
+            out PxrPicoKeyboardPassthroughLevel level)
+        {
+            return PXR_Plugin.MixedReality.UPxr_GetPicoKeyboardPassthroughState(out level);
+        }
+
+        /// <summary>
         /// Stops the Spatial Anchor or Scene Capture feature by stopping the corresponding sense data provider.
         /// </summary>
         /// <param name="type">Specifies the sense data provider to stop: `SpatialAnchor` or `SceneCapture`.</param>
@@ -356,6 +655,36 @@ namespace ByteDance.PICO.XR
             {
                 return PXR_Plugin.MixedReality.UPxr_LocateAnchor(anchorHandle, out position, out rotation);
             }
+        }
+
+        /// <summary>
+        /// Locates an anchor using the original, unaligned spatial location.
+        /// </summary>
+        public static PxrResult LocateAnchorRaw(
+            ulong anchorHandle,
+            out Vector3 position,
+            out Quaternion rotation)
+        {
+            return PXR_Plugin.MixedReality.UPxr_LocateAnchorRaw(
+                anchorHandle,
+                out position,
+                out rotation);
+        }
+
+        /// <summary>
+        /// Locates an anchor using the passthrough-aligned position and model scale.
+        /// </summary>
+        public static PxrResult LocateAnchorAligned(
+            ulong anchorHandle,
+            out Vector3 position,
+            out Quaternion rotation,
+            out float modelScale)
+        {
+            return PXR_Plugin.MixedReality.UPxr_LocateAnchorAligned(
+                anchorHandle,
+                out position,
+                out rotation,
+                out modelScale);
         }
 
         /// <summary>

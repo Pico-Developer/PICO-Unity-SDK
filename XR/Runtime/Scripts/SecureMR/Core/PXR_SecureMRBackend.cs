@@ -342,7 +342,10 @@ namespace ByteDance.PICO.SecureMR
 #endif
         }
 
-        public ulong CreateProvider(int imageWidth, int imageHeight, int containerWidth, int containerHeight, int containerDepth)
+        public ulong CreateProvider(
+            int imageWidth,
+            int imageHeight,
+            SpatialContainerConfiguration containerConfiguration)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (!PXR_SecureMRPlugin.SpatialSecureMR.EnsureConnected(2000))
@@ -350,7 +353,13 @@ namespace ByteDance.PICO.SecureMR
                 throw new InvalidOperationException("SSMR backend service is not connected");
             }
 
-            var sessionId = PXR_SecureMRPlugin.SpatialSecureMR.CreateSessionHandle(0, imageWidth, imageHeight, containerWidth, containerHeight, containerDepth);
+            var sessionId = PXR_SecureMRPlugin.SpatialSecureMR.CreateSessionHandle(
+                0,
+                imageWidth,
+                imageHeight,
+                containerConfiguration.containerWidth,
+                containerConfiguration.containerHeight,
+                containerConfiguration.GetBackendDepth());
             return unchecked((ulong)sessionId);
 #else
             return 0;

@@ -15,6 +15,20 @@ namespace ByteDance.PICO.CameraPack
 {
     public delegate void CameraCallBack(int type);
 
+    public readonly struct PXRCameraFrameSnapshot
+    {
+        public readonly long Timestamp;
+        public readonly Vector2Int Resolution;
+        public readonly Texture Texture;
+
+        public PXRCameraFrameSnapshot(long timestamp, Vector2Int resolution, Texture texture)
+        {
+            Timestamp = timestamp;
+            Resolution = resolution;
+            Texture = texture;
+        }
+    }
+
     [Serializable]
     public class CameraAPI : MonoBehaviour
     {
@@ -23,13 +37,16 @@ namespace ByteDance.PICO.CameraPack
         protected int m_width = 0;
         protected int m_fps = 0;
         protected bool isOpened = false;
-        protected static PXRCameraStateCode m_State = PXRCameraStateCode.STATE_IDLE;
+        protected PXRCameraStateCode m_State = PXRCameraStateCode.STATE_IDLE;
         protected CancellationTokenSource cancellationTokenSource; // Cancellation token source
         public PXRCameraStateCode GetState() => m_State;
         Int64 captureTime = 0;
-        XrCameraImageDataRawBuffer imageData;
+        protected XrCameraImageDataRawBuffer imageData;
+        protected readonly object imageDataLock = new object();
         public Action<int, int> OnFirstFrameReceived;
         protected bool _isFirstFrame = true;
+        [SerializeField] private bool _enableVerboseFrameLogs = false;
+        private byte[] imageDataBuffer;
 
 
         public virtual void OnCameraCreate()
@@ -71,21 +88,22 @@ namespace ByteDance.PICO.CameraPack
             PLog.CameraLog("CameraAPI", $"SetTextureCameraFromUnity info: {width}x{height}, format: {targetTexture.format}");
         }
 
-        public virtual async Task<bool> OpenCameraAsync(PXRCameraEye eye, int width, int height, int fps)
+        public virtual Task<bool> OpenCameraAsync(PXRCameraEye eye, int width, int height, int fps)
         {
-            m_eye = eye;
-            m_width = width;
-            m_height = height;
-            m_fps = fps;
-            _isFirstFrame = true;
             PLog.CameraLog("CameraAPI", $"OpenCameraAsync: Camera {eye} requesting open, resolution {width}x{height}, fps {fps}");
             if (m_State == PXRCameraStateCode.STATE_CAMERA_OPENED ||
                 m_State == PXRCameraStateCode.STATE_VIDEO_PREVIEWING)
             {
                 Debug.LogError($"CameraAPI OpenCameraAsync: Camera {eye} is already running");
-                return true;
+                return Task.FromResult(true);
             }
-            return false;
+
+            m_eye = eye;
+            m_width = width;
+            m_height = height;
+            m_fps = fps;
+            _isFirstFrame = true;
+            return Task.FromResult(false);
         }
         
         public virtual bool StartPreview()
@@ -113,13 +131,7 @@ namespace ByteDance.PICO.CameraPack
                 return true;
             }
 
-
-            if (cancellationTokenSource != null)
-            {
-                cancellationTokenSource.Cancel();
-                cancellationTokenSource.Dispose();
-                cancellationTokenSource = null;
-            }
+            CancelAndDisposeCancellationTokenSource();
 
             return false;
         }
@@ -130,8 +142,24 @@ namespace ByteDance.PICO.CameraPack
             {
                 StopPreview();
             }
+            else
+            {
+                CancelAndDisposeCancellationTokenSource();
+            }
 
             return false;
+        }
+
+        protected void CancelAndDisposeCancellationTokenSource()
+        {
+            if (cancellationTokenSource == null)
+            {
+                return;
+            }
+
+            cancellationTokenSource.Cancel();
+            cancellationTokenSource.Dispose();
+            cancellationTokenSource = null;
         }
 
 
@@ -140,51 +168,176 @@ namespace ByteDance.PICO.CameraPack
             return captureTime;
         }
 
-        public virtual void GetPixels32(Color32[] color32)
+        public virtual bool TryGetLatestFrameSnapshot(out PXRCameraFrameSnapshot snapshot)
         {
-            int bytesPerPixel = (int)imageData.bytesPerPixel;
-            int stride = (int)imageData.stride;
-            int bufferSize = (int)imageData.bufferSize;
-
-            // Check if the buffer is valid
-            if (imageData.buffer == IntPtr.Zero)
+            lock (imageDataLock)
             {
-                Debug.LogError("Buffer pointer is null");
-                return;
-            }
-
-            byte[] imageData_ = new byte[bufferSize];
-            Marshal.Copy(imageData.buffer, imageData_, 0, bufferSize);
-            if (color32.Length != m_width * m_height)
-            {
-                color32 = new Color32[m_width * m_height];
-            }
-
-            for (int y = 0; y < m_height; y++)
-            {
-                for (int x = 0; x < m_width; x++)
+                snapshot = default;
+                if (captureTime <= 0 || m_width <= 0 || m_height <= 0 || _targetTexture == null)
                 {
-                    int index = (y * m_width + x) * 4;
-                    color32[y * m_width + x] = new Color32(imageData_[index], imageData_[index + 1],
-                        imageData_[index + 2], imageData_[index + 3]);
+                    return false;
                 }
+
+                snapshot = new PXRCameraFrameSnapshot(captureTime, new Vector2Int(m_width, m_height), _targetTexture);
+                return true;
             }
+        }
+
+        public virtual bool TryCopyLatestFramePixels(Color32[] buffer, out PXRCameraFrameSnapshot snapshot)
+        {
+            lock (imageDataLock)
+            {
+                snapshot = default;
+                if (!TryGetImageBufferLayout(out int bytesPerPixel, out int stride, out int bufferSize))
+                {
+                    return false;
+                }
+
+                snapshot = new PXRCameraFrameSnapshot(captureTime, new Vector2Int(m_width, m_height), _targetTexture);
+
+                if (buffer == null)
+                {
+                    Debug.LogError("Color32 buffer is null");
+                    return false;
+                }
+
+                int pixelCount = m_width * m_height;
+                if (buffer.Length != pixelCount)
+                {
+                    Debug.LogError($"Color32 buffer length mismatch: actual {buffer.Length}, expected {pixelCount}");
+                    return false;
+                }
+
+                if (!EnsureImageDataBuffer(bufferSize))
+                {
+                    return false;
+                }
+
+                Marshal.Copy(imageData.buffer, imageDataBuffer, 0, bufferSize);
+                for (int y = 0; y < m_height; y++)
+                {
+                    int rowOffset = y * stride;
+                    for (int x = 0; x < m_width; x++)
+                    {
+                        int pixelIndex = rowOffset + x * bytesPerPixel;
+                        buffer[y * m_width + x] = ReadColor32(imageDataBuffer, pixelIndex, bytesPerPixel);
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        public virtual bool GetPixels32(Color32[] color32)
+        {
+            return TryCopyLatestFramePixels(color32, out _);
         }
 
         public virtual Color GetPixel(int x, int y)
         {
-            int bufferSize = (int)imageData.bufferSize;
-            int stride = (int)imageData.stride;
-            // Check if the buffer is valid
+            lock (imageDataLock)
+            {
+                if (!TryGetImageBufferLayout(out int bytesPerPixel, out int stride, out _))
+                {
+                    return Color.clear;
+                }
+
+                if (!TryGetPixelIndex(x, y, bytesPerPixel, stride, out int pixelIndex))
+                {
+                    return Color.clear;
+                }
+
+                byte r = Marshal.ReadByte(imageData.buffer, pixelIndex);
+                byte g = Marshal.ReadByte(imageData.buffer, pixelIndex + 1);
+                byte b = Marshal.ReadByte(imageData.buffer, pixelIndex + 2);
+                byte a = bytesPerPixel > 3
+                    ? Marshal.ReadByte(imageData.buffer, pixelIndex + 3)
+                    : (byte)255;
+
+                return new Color32(r, g, b, a);
+            }
+        }
+
+        private bool EnsureImageDataBuffer(int bufferSize)
+        {
+            if (bufferSize <= 0)
+            {
+                Debug.LogError($"Invalid image buffer size: {bufferSize}");
+                return false;
+            }
+
+            if (imageDataBuffer == null || imageDataBuffer.Length != bufferSize)
+            {
+                imageDataBuffer = new byte[bufferSize];
+            }
+
+            return true;
+        }
+
+        private bool TryGetImageBufferLayout(out int bytesPerPixel, out int stride, out int bufferSize)
+        {
+            bytesPerPixel = (int)imageData.bytesPerPixel;
+            stride = (int)imageData.stride;
+            bufferSize = (int)imageData.bufferSize;
+
             if (imageData.buffer == IntPtr.Zero)
             {
                 Debug.LogError("Buffer pointer is null");
-                return Color.clear;
+                return false;
             }
 
-            byte[] imageData_ = new byte[bufferSize];
-            Marshal.Copy(imageData.buffer, imageData_, 0, bufferSize);
-            return GetColorFromRGBAByteArray(imageData_, m_width, m_height, x, y);
+            if (m_width <= 0 || m_height <= 0)
+            {
+                Debug.LogError($"Invalid image dimensions: {m_width}x{m_height}");
+                return false;
+            }
+
+            if (bytesPerPixel <= 0)
+            {
+                bytesPerPixel = 4;
+            }
+
+            if (bytesPerPixel < 3)
+            {
+                Debug.LogError($"Unsupported image bytes per pixel: {bytesPerPixel}");
+                return false;
+            }
+
+            if (stride <= 0)
+            {
+                stride = m_width * bytesPerPixel;
+            }
+
+            int requiredBytes = (m_height - 1) * stride + m_width * bytesPerPixel;
+            if (bufferSize < requiredBytes)
+            {
+                Debug.LogError($"Image buffer size mismatch: actual {bufferSize}, expected at least {requiredBytes}");
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryGetPixelIndex(int x, int y, int bytesPerPixel, int stride, out int pixelIndex)
+        {
+            pixelIndex = 0;
+            if (x < 0 || x >= m_width || y < 0 || y >= m_height)
+            {
+                Debug.LogError($"Coordinates ({x},{y}) out of image bounds (Width: {m_width}, Height: {m_height})");
+                return false;
+            }
+
+            pixelIndex = y * stride + x * bytesPerPixel;
+            return true;
+        }
+
+        private static Color32 ReadColor32(byte[] buffer, int pixelIndex, int bytesPerPixel)
+        {
+            return new Color32(
+                buffer[pixelIndex],
+                buffer[pixelIndex + 1],
+                buffer[pixelIndex + 2],
+                bytesPerPixel > 3 ? buffer[pixelIndex + 3] : (byte)255);
         }
 
         public PxrSensorState2 GetPredictedMainSensorState2(double predictTime)
@@ -195,6 +348,16 @@ namespace ByteDance.PICO.CameraPack
             return sensorState2;
         }
 
+        private void LogVerboseFrame(string message)
+        {
+            if (!_enableVerboseFrameLogs)
+            {
+                return;
+            }
+
+            PLog.CameraLog("CameraAPI", message);
+        }
+
         private IEnumerator CallPluginAtEndOfFrames()
         {
             PLog.CameraLog("CameraAPI", "CallPluginAtEndOfFrames started.");
@@ -202,40 +365,53 @@ namespace ByteDance.PICO.CameraPack
             while (true)
             {
                 yield return new WaitForEndOfFrame();
+                lock (imageDataLock)
                 {
-                    bool acquireResult = AcquireCameraImage(m_eye, out imageId, out captureTime);
-
-                    if (acquireResult && imageId > 0)
+                    bool shouldReleaseImage = false;
+                    try
                     {
-                        PLog.CameraLog("CameraAPI", $"CameraAPI: Acquired image {imageId}, captureTime {captureTime}"); // Verbose logging
-                        if (GetCameraImageData(m_eye, imageId, out imageData))
-                        {
-                            if (_isFirstFrame)
-                            {
-                                PLog.CameraLog("CameraAPI", 
-                                    $"CameraAPI: First frame received rsl: {imageData.width}*{imageData.height},before rsl {m_width}*{m_height}");
-                                _isFirstFrame = false;
-                                m_width = (int)imageData.width;
-                                m_height = (int)imageData.height;
-                                OnFirstFrameReceived?.Invoke(m_width, m_height);
-                            }
+                        bool acquireResult = AcquireCameraImage(m_eye, out imageId, out captureTime);
 
-                            if (_targetTexture != null)
-                            {
-                                _targetTexture.LoadRawTextureData(imageData.buffer, (int)imageData.bufferSize);
-                                _targetTexture.Apply();
-                            }
-                            ReleaseCameraImage(m_eye, imageId);
-                        }
-                        else
+                        if (acquireResult && imageId > 0)
                         {
-                            PLog.CameraLog("CameraAPI", $"CameraAPI: Failed to get image data for imageId {imageId}");
+                            shouldReleaseImage = true;
+                            LogVerboseFrame($"CameraAPI: Acquired image {imageId}, captureTime {captureTime}");
+                            if (GetCameraImageData(m_eye, imageId, out imageData))
+                            {
+                                if (_isFirstFrame)
+                                {
+                                    PLog.CameraLog("CameraAPI",
+                                        $"CameraAPI: First frame received rsl: {imageData.width}*{imageData.height},before rsl {m_width}*{m_height}");
+                                    _isFirstFrame = false;
+                                    m_width = (int)imageData.width;
+                                    m_height = (int)imageData.height;
+                                    OnFirstFrameReceived?.Invoke(m_width, m_height);
+                                }
+
+                                if (_targetTexture != null)
+                                {
+                                    _targetTexture.LoadRawTextureData(imageData.buffer, (int)imageData.bufferSize);
+                                    _targetTexture.Apply();
+                                }
+                            }
+                            else
+                            {
+                                PLog.CameraLog("CameraAPI", $"CameraAPI: Failed to get image data for imageId {imageId}");
+                            }
+                        }
+                        else if (acquireResult)
+                        {
+                            LogVerboseFrame("CameraAPI: Acquired image but ID is 0");
                         }
                     }
-                    else if (acquireResult)
+                    finally
                     {
-                        PLog.CameraLog("CameraAPI", "CameraAPI: Acquired image but ID is 0");
-                    } // Optional debug
+                        if (shouldReleaseImage)
+                        {
+                            ReleaseCameraImage(m_eye, imageId);
+                            imageId = 0;
+                        }
+                    }
                 }
             }
         }

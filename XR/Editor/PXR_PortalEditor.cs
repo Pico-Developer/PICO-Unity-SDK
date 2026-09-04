@@ -178,8 +178,9 @@ namespace ByteDance.PICO.XR.Editor
         Action applyOpenXRPluginAction = () =>
         {
             SettingsService.OpenProjectSettings("Project/XR Plug-in Management");
+            const string openXRLoaderType = "UnityEngine.XR.OpenXR.OpenXRLoader";
             var generalSettings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Android);
-            if (generalSettings)
+            if (generalSettings && generalSettings.Manager)
             {
                 IReadOnlyList<XRLoader> list = generalSettings.Manager.activeLoaders;
                 while (list.Count > 0)
@@ -187,10 +188,22 @@ namespace ByteDance.PICO.XR.Editor
                     string nameTemp = list[0].GetType().FullName;
                     XRPackageMetadataStore.RemoveLoader(generalSettings.Manager, nameTemp, BuildTargetGroup.Android);
                 }
-                XRPackageMetadataStore.AssignLoader(generalSettings.Manager, "OpenXRLoader", BuildTargetGroup.Android);
+
+                bool success = XRPackageMetadataStore.AssignLoader(
+                    generalSettings.Manager, openXRLoaderType, BuildTargetGroup.Android);
+                EditorUtility.SetDirty(generalSettings.Manager);
+                EditorUtility.SetDirty(generalSettings);
+                AssetDatabase.SaveAssets();
+                SettingsService.NotifySettingsProviderChanged();
+
+                if (!success)
+                {
+                    Debug.LogError("Failed to enable OpenXR loader. Please check Project Settings > XR Plug-in Management (Android).");
+                }
             }
             PXR_Utils.UpdateSDKSymbols();
             PXR_AppLog.PXR_OnEvent(PXR_AppLog.strPortal, PXR_AppLog.strPortal_Configs_RequiredPICOXRPluginApplied);
+            instance?.Repaint();
         };
 
         Action applyOpenXRPICOGroupRequiredAction = () =>
@@ -374,13 +387,11 @@ namespace ByteDance.PICO.XR.Editor
                                 GUIContent bodyContent = new GUIContent("PICO's official Unity package for developing applications for PICO XR devices.");
                                 DrawTwoRowLayout(title, bodyContent);
 
-                                string iconFullSpatialPath = Path.Combine(PXR_Utils.sdkPackageName, PXR_Utils.assetPath, PXR_Utils.PICO_Full_Spatial_NAME);
-                                var contentFullSpatial = EditorGUIUtility.TrIconContent(iconFullSpatialPath, "Full Space");
+                                var contentFullSpatial = LoadPortalIconContent(PXR_Utils.PICO_Full_Spatial_NAME, "Full Space");
                                 GUIContent textContentFullSpatial = new GUIContent("Full Space");
 
 
-                                string iconShareSpatialPath = Path.Combine(PXR_Utils.sdkPackageName, PXR_Utils.assetPath, PXR_Utils.PICO_Share_Spatial_NAME);
-                                var contentShareSpatial = EditorGUIUtility.TrIconContent(iconShareSpatialPath, "Shared Space");
+                                var contentShareSpatial = LoadPortalIconContent(PXR_Utils.PICO_Share_Spatial_NAME, "Shared Space");
                                 GUIContent textContentShareSpatial = new GUIContent("Shared Space");
 
                                 GUIStyle centeredStyle = new GUIStyle(EditorStyles.label);
@@ -930,12 +941,22 @@ namespace ByteDance.PICO.XR.Editor
                 EditorGUILayout.LabelField("Version " + PXR_Plugin.System.UPxr_GetSDKVersion(), _styles.VersionText);
 
                 string iconName = EditorGUIUtility.isProSkin ? PXR_Utils.PICO_ICON_WHITE_NAME : PXR_Utils.PICO_ICON_BLACK_NAME;
-                string iconPath = Path.Combine(PXR_Utils.sdkPackageName, PXR_Utils.assetPath, iconName);
-                var content = EditorGUIUtility.TrIconContent(iconPath, "PICO Logo");
+                var content = LoadPortalIconContent(iconName, "PICO Logo");
                 EditorGUILayout.LabelField(content, _styles.IconStyle,
                     GUILayout.Width(_styles.IconStyle.fixedWidth),
                     GUILayout.Height(_styles.IconStyle.fixedHeight), GUILayout.ExpandWidth(true));
             }
+        }
+
+        private static string GetPortalResourcePath(string assetName)
+        {
+            return PXR_Utils.sdkPackageName + "Resources/" + assetName;
+        }
+
+        private static GUIContent LoadPortalIconContent(string assetName, string tooltip)
+        {
+            Texture2D icon = AssetDatabase.LoadAssetAtPath<Texture2D>(GetPortalResourcePath(assetName));
+            return new GUIContent(icon, tooltip);
         }
 
         public void DrawTwoRowLayout(string title, GUIContent bodyContent, string link = null, System.Action buttonAction = null, string button = null)

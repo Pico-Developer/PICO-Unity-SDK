@@ -19,7 +19,7 @@ namespace ByteDance.PICO.Debugger
 {
     public class PXR_Tool_TimerController : MonoBehaviour
     {
-        private readonly float delayTime = 0.17f;
+        private readonly float delayTime = 0.5f;
         [SerializeField] private Animator anim;
         private bool isTurnOn = false;
         private bool isLock = true;

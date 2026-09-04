@@ -22,16 +22,19 @@ namespace ByteDance.PICO.Debugger
         public void Toggle()
         {
             PXR_InspectorController.Instance.gameObject.SetActive(true);
-            if (TryGetComponent(out PXR_InspectorItem item))
+            PXR_InspectorItem item = null;
+            if (TryGetComponent(out item))
             {
                 PXR_InspectorController.Instance.SetGameObject(item.Target);
             }
+            // Lazily realise direct child rows the first time this node opens
+            // (Stage 1). Cheap no-op on subsequent expands.
+            if (toggle.isOn && item != null)
+            {
+                item.EnsureChildren();
+            }
             if (group.transform.childCount <= 0) return;
             group.SetActive(toggle.isOn);
-            // for (var i = 0; i < group.transform.childCount; i++)
-            // {
-            //     LayoutRebuilder.ForceRebuildLayoutImmediate(group.transform.GetChild(i).GetComponent<RectTransform>());
-            // }
             var current = group.transform;
             while (current != null && current.TryGetComponent(out RectTransform rect))
             {

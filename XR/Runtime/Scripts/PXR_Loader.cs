@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/*******************************************************************************
 Copyright © 2015-2022 PICO Technology Co., Ltd.All rights reserved.  
 
 NOTICE：All information contained herein is, and remains the property of 
@@ -201,8 +201,13 @@ namespace ByteDance.PICO.XR
                     qualitySharpening = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().qualitySharpening),
                     fixedFoveatedSharpening = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().fixedFoveatedSharpening),
                     selfAdaptiveSharpening = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().selfAdaptiveSharpening),
+#if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
+                    enableETFR = 0,
+                    foveationLevel = 0,
+#else
                     enableETFR = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().enableETFR),
                     foveationLevel = Convert.ToUInt16((int)PXR_ProjectSetting.GetProjectConfig().foveationLevel + 1),
+#endif
                     spatialMeshLod = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().meshLod),
                     enableEyeTracking = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().eyeTracking),
                     dynamicFoveation =1,
@@ -314,7 +319,18 @@ namespace ByteDance.PICO.XR
             {
                 PXR_Plugin.MixedReality.UPxr_CreateLightEstimationProvider(PXR_ProjectSetting.GetProjectConfig().lightEstimationTextureResolution);
             }
-            
+            if (PXR_ProjectSetting.GetProjectConfig().objectTracking)
+            {
+                PXR_Plugin.MixedReality.UPxr_CreateDynamicObjectTrackingSenseDataProvider(
+                    new[]
+                    {
+                        PxrDynamicObjectType.Keyboard,
+                        PxrDynamicObjectType.PicoKeyboard,
+                        PxrDynamicObjectType.Mouse,
+                        PxrDynamicObjectType.PicoTouchpad
+                    });
+            }
+
 
             currentLoaderState = LoaderState.Initialized;
             return displaySubsystem != null;
@@ -439,10 +455,34 @@ namespace ByteDance.PICO.XR
                 StartSubsystem<XRInputSubsystem>();
             }
             currentLoaderState = LoaderState.Started;
+#if ENABLE_PICO_XR_SDK
+            ApplyKeyboardPassthroughPreferenceIfNeeded(true);
+#endif
 
             return true;
 #endif
         }
+
+#if ENABLE_PICO_XR_SDK
+        private PxrResult ApplyKeyboardPassthroughPreferenceIfNeeded(bool enabled)
+        {
+            if (enabled && !PXR_ProjectSetting.GetProjectConfig().keyboardPassthrough)
+            {
+                return PxrResult.SUCCESS;
+            }
+
+            var result = PXR_MixedReality.SetEnvironmentPassthroughPreference(
+                PxrEnvironmentPassthroughType.Keyboard,
+                enabled);
+            if (result != PxrResult.SUCCESS)
+            {
+                Debug.LogWarning(
+                    $"{TAG} SetEnvironmentPassthroughPreference Keyboard={enabled} Failed:{result}");
+            }
+
+            return result;
+        }
+#endif
 
         public override bool Stop()
         {
@@ -559,6 +599,11 @@ namespace ByteDance.PICO.XR
                     PXR_MixedReality.StopSenseDataProvider(PxrSenseDataProviderType.LightEstimation);
                 }
                 PXR_Plugin.MixedReality.UPxr_DestroySenseDataProvider(PXR_Plugin.MixedReality.UPxr_GetSenseDataProviderHandle(PxrSenseDataProviderType.LightEstimation));
+            }
+            if (PXR_ProjectSetting.GetProjectConfig().objectTracking &&
+                PXR_Plugin.MixedReality.DynamicObjectTrackingProviderHandle != 0)
+            {
+                PXR_Plugin.MixedReality.UPxr_DestroyDynamicObjectTrackingSenseDataProvider();
             }
             
 #endif
@@ -744,6 +789,8 @@ namespace ByteDance.PICO.XR
                 case XrStructureType.XR_TYPE_EVENT_DATA_SENSE_DATA_PROVIDER_STATE_CHANGED:
                 case XrStructureType.XR_TYPE_EVENT_DATA_SENSE_DATA_UPDATED:
                 case XrStructureType.XR_TYPE_EVENT_DATA_AUTO_SCENE_CAPTURE_UPDATE_PICO:
+                case XrStructureType.XR_TYPE_EVENT_DATA_KEYBOARD_PASSTHROUGH_STATE_CHANGED_PICO:
+                case XrStructureType.XR_TYPE_EVENT_DATA_PICO_KEYBOARD_PASSTHROUGH_STATE_CHANGED_PICO:
                 {
                     PXR_Manager.Instance.PollEvent(eventDB);
                     break;

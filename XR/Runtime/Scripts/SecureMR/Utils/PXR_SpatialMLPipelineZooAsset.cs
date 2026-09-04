@@ -10,7 +10,6 @@ namespace ByteDance.PICO.SecureMR
     {
         public string packageId;
         public TextAsset manifestJson;
-        public TextAsset modelJson;
         public List<PipelineJsonAsset> pipelineJsonAssets = new List<PipelineJsonAsset>();
         public List<BinaryAsset> binaryAssets = new List<BinaryAsset>();
 
