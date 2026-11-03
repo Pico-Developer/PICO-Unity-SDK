@@ -73,6 +73,10 @@ namespace ByteDance.PICO.XR
 
         public bool isSpatialAdapter;
 
+#if UNITY_EDITOR
+        private static bool appModeInitialized;
+        private static PXR_ProjectSetting pendingAppModeSave;
+#endif
 
         public static PXR_ProjectSetting GetProjectConfig()
         {
@@ -144,11 +148,52 @@ namespace ByteDance.PICO.XR
                 }
 
             }
+
+            var settings = PXR_Settings.GetSettings();
+            if (settings != null && !EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                bool isSpatial = settings.appMode == PXR_Settings.AppMode.Spatial;
+                bool appModeChanged = projectConfig.isSpatialAdapter != isSpatial;
+                projectConfig.isSpatialAdapter = isSpatial;
+                if (EditorUtility.IsPersistent(projectConfig) && (!appModeInitialized || appModeChanged))
+                {
+                    // The inspector may already have fixed memory without saving it.
+                    appModeInitialized = true;
+                    EditorUtility.SetDirty(projectConfig);
+                    pendingAppModeSave = projectConfig;
+                    EditorApplication.delayCall -= SaveAppMode;
+                    EditorApplication.delayCall += SaveAppMode;
+                }
+            }
 #endif
             return projectConfig;
         }
 
 #if UNITY_EDITOR
+        private static void SaveAppMode()
+        {
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                EditorApplication.delayCall += SaveAppMode;
+                return;
+            }
+
+            var projectConfig = pendingAppModeSave;
+            pendingAppModeSave = null;
+            var settings = PXR_Settings.GetSettings();
+            if (projectConfig == null || settings == null || !EditorUtility.IsPersistent(projectConfig) ||
+                EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                appModeInitialized = false;
+                return;
+            }
+
+            // Re-read the mode: it may have changed since the save was queued.
+            projectConfig.isSpatialAdapter = settings.appMode == PXR_Settings.AppMode.Spatial;
+            EditorUtility.SetDirty(projectConfig);
+            AssetDatabase.SaveAssetIfDirty(projectConfig);
+        }
+
         public static void SaveAssets()
         {
             EditorUtility.SetDirty(GetProjectConfig());

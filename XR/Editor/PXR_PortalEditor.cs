@@ -541,9 +541,9 @@ namespace ByteDance.PICO.XR.Editor
                                     EditorConfigurations(strinfo, PXR_Utils.IsPXRPluginEnabled(), applyPICOXRPluginAction);
 
                                     strinfo = "Required: AppMode must be set to XR";
-                                    EditorConfigurations(strinfo, PXR_Utils.IsPXRPluginEnabled() && !PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter, applyPICOAppModeXRAction);
+                                    EditorConfigurations(strinfo, PXR_Utils.IsPXRPluginEnabled() && PXR_Utils.IsAppMode(PXR_Settings.AppMode.XR), applyPICOAppModeXRAction);
 
-                                    bool applied = appliedBuildTarget && appliedAdroidSdkVersions && appliedARM64 && PXR_Utils.IsPXRPluginEnabled() && !PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter;
+                                    bool applied = appliedBuildTarget && appliedAdroidSdkVersions && appliedARM64 && PXR_Utils.IsPXRPluginEnabled() && PXR_Utils.IsAppMode(PXR_Settings.AppMode.XR);
                                     if (!applied)
                                     {
                                         EditorGUILayout.BeginHorizontal();
@@ -721,9 +721,9 @@ namespace ByteDance.PICO.XR.Editor
                                     EditorConfigurations(strinfo, PXR_Utils.IsPXRPluginEnabled(), applyPICOXRPluginAction);
 
                                     strinfo = "Required: AppMode must be set to Spatial";
-                                    EditorConfigurations(strinfo, PXR_Utils.IsPXRPluginEnabled() && PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter, applyPICOAppModeSpatialAdapterAction);
+                                    EditorConfigurations(strinfo, PXR_Utils.IsPXRPluginEnabled() && PXR_Utils.IsAppMode(PXR_Settings.AppMode.Spatial), applyPICOAppModeSpatialAdapterAction);
 
-                                    if (PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter)
+                                    if (PXR_Utils.IsAppMode(PXR_Settings.AppMode.Spatial))
                                     {
                                         for (int i = 0; i < PXR_Utils.spatialAdapterPackagesLocalPath.Length; i++)
                                         {

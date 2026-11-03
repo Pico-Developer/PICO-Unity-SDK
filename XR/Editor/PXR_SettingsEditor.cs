@@ -88,7 +88,10 @@ namespace ByteDance.PICO.XR.Editor
                 PXR_ProjectSetting projectConfig = PXR_ProjectSetting.GetProjectConfig();
 
                 EditorGUILayout.PropertyField(appMode, guiAppMode);
+                // GetProjectConfig and SDK symbols must see the newly selected mode.
+                serializedObject.ApplyModifiedProperties();
                 PXR_Settings.AppMode currentMode = (PXR_Settings.AppMode)appMode.enumValueIndex;
+                bool appModeChanged = projectConfig.isSpatialAdapter != (currentMode == PXR_Settings.AppMode.Spatial);
                 EditorGUILayout.Space(10);
 
                 if (PXR_Settings.AppMode.XR == currentMode)
@@ -201,10 +204,10 @@ namespace ByteDance.PICO.XR.Editor
                     EditorGUI.indentLevel--;
                 }
 #endif
-                if (GUI.changed)
+                if (GUI.changed || appModeChanged)
                 {
                     EditorUtility.SetDirty(projectConfig);
-                    PXR_ProjectSetting.SaveAssets();
+                    AssetDatabase.SaveAssetIfDirty(projectConfig);
                 }
                 if (PXR_Utils.UpdateSDKSymbols())
                 {

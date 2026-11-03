@@ -668,7 +668,7 @@ namespace ByteDance.PICO.XR.Editor
                 return CapabilityProfileSelection.Selected.Any(c => c is PXR_SDKCapability);
             }
 
-            return IsPXRPluginEnabled() && !PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter;
+            return IsPXRPluginEnabled() && IsAppMode(PXR_Settings.AppMode.XR);
 #else
             return false;
 #endif
@@ -694,6 +694,12 @@ namespace ByteDance.PICO.XR.Editor
             CapabilityProfileSelection.Clear();
             CapabilityProfileSelection.Save();
             updateBasedOnCapabilityProfileSelection = false;
+        }
+
+        internal static bool IsAppMode(PXR_Settings.AppMode mode)
+        {
+            var settings = PXR_Settings.GetSettings();
+            return settings != null && settings.appMode == mode;
         }
 
         public static bool IsPXRPluginEnabled()
@@ -769,7 +775,7 @@ namespace ByteDance.PICO.XR.Editor
             var defineSymbols = new HashSet<string>(currentDefines.Split(';', StringSplitOptions.RemoveEmptyEntries));
 
             if (!defineSymbols.Contains(openxr_plugin) && !defineSymbols.Contains(spatialadapter_plugin) &&
-                !defineSymbols.Contains(picoxr_plugin)&&!PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter)
+                !defineSymbols.Contains(picoxr_plugin) && IsAppMode(PXR_Settings.AppMode.XR))
             {
                 defineSymbols.Add(picoxr_plugin);
                 string newDefines = string.Join(";", defineSymbols);
@@ -777,7 +783,7 @@ namespace ByteDance.PICO.XR.Editor
                 Debug.Log($"SetDefineSymbols init define symbols: {newDefines}");
             }
             
-            if (!defineSymbols.Contains(openxr_plugin) && PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter &&
+            if (!defineSymbols.Contains(openxr_plugin) && IsAppMode(PXR_Settings.AppMode.Spatial) &&
                 IsMSPackageInstalled())
             {
                 SetDefineSymbols(spatialadapter_plugin);
@@ -834,6 +840,8 @@ namespace ByteDance.PICO.XR.Editor
 
         public static bool UpdateSDKSymbols()
         {
+            var settings = PXR_Settings.GetSettings();
+
             XRGeneralSettings generalSettings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Android);
             if (generalSettings == null) return false;
             var assignedSettings = generalSettings.AssignedSettings;
@@ -856,14 +864,14 @@ namespace ByteDance.PICO.XR.Editor
                     }
                 }
 #endif
-                if (loader is PXR_Loader)
+                if (loader is PXR_Loader && settings != null)
                 {
                     modified |= defineSymbolsList.Remove(PXR_Utils.openxr_plugin);
-                    string targetSymbol = PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter
+                    string targetSymbol = settings.appMode == PXR_Settings.AppMode.Spatial
                         ? spatialadapter_plugin
                         : picoxr_plugin;
 
-                    string oldSymbol = PXR_ProjectSetting.GetProjectConfig().isSpatialAdapter
+                    string oldSymbol = settings.appMode == PXR_Settings.AppMode.Spatial
                         ? picoxr_plugin
                         : spatialadapter_plugin;
                     modified |= defineSymbolsList.Remove(oldSymbol);
