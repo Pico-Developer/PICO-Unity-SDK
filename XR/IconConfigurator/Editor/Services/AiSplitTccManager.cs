@@ -551,7 +551,10 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             bool hasConnect = TryReadIntJsonProperty(timeoutValue, "connect", out int connectMs);
             bool hasRead = TryReadIntJsonProperty(timeoutValue, "read", out int readMs);
             bool hasPoll = TryReadIntJsonProperty(timeoutValue, "poll_interval", out int pollMs);
-            if (!hasConnect && !hasRead && !hasPoll)
+            bool hasTotal = TryReadIntJsonProperty(timeoutValue, "total", out int totalMs)
+                || TryReadIntJsonProperty(timeoutValue, "total_timeout", out totalMs)
+                || TryReadIntJsonProperty(timeoutValue, "total_timeout_ms", out totalMs);
+            if (!hasConnect && !hasRead && !hasPoll && !hasTotal)
             {
                 return json;
             }
@@ -562,6 +565,7 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             AppendTimeoutField(builder, ref hasPrevious, "connect_timeout_seconds", hasConnect, connectMs);
             AppendTimeoutField(builder, ref hasPrevious, "read_timeout_seconds", hasRead, readMs);
             AppendTimeoutField(builder, ref hasPrevious, "poll_interval_seconds", hasPoll, pollMs);
+            AppendTimeoutField(builder, ref hasPrevious, "total_timeout_seconds", hasTotal, totalMs);
             builder.Append('}');
             return InsertTopLevelProperty(json, builder.ToString());
         }
@@ -650,6 +654,13 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             if (TryReadIntJsonProperty(timeoutJson, "poll_interval", out int pollMs))
             {
                 config.Timeouts.PollIntervalSeconds = MillisecondsToSeconds(pollMs);
+            }
+
+            if (TryReadIntJsonProperty(timeoutJson, "total", out int totalMs)
+                || TryReadIntJsonProperty(timeoutJson, "total_timeout", out totalMs)
+                || TryReadIntJsonProperty(timeoutJson, "total_timeout_ms", out totalMs))
+            {
+                config.Timeouts.TotalTimeoutSeconds = MillisecondsToSeconds(totalMs);
             }
         }
 

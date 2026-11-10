@@ -53,7 +53,8 @@ namespace ByteDance.PICO.XR
         private Camera[] eyeCamera;
         private bool appSpaceWarp;
         private Transform m_AppSpaceTransform;
-        private DepthTextureMode m_CachedDepthTextureMode;
+        private readonly Dictionary<Camera, DepthTextureMode> m_CachedDepthTextureModes =
+            new Dictionary<Camera, DepthTextureMode>();
 
         [HideInInspector]
         public bool screenFade;
@@ -278,6 +279,9 @@ namespace ByteDance.PICO.XR
                     StartCoroutine("StartXR");
                     isNeedResume = false;
                 }
+#if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
+                ScheduleSrpFoveationReapply();
+#endif
             }
 #endif
 
@@ -318,7 +322,7 @@ namespace ByteDance.PICO.XR
             Application.targetFrameRate = 72;
 #endif
 #if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
-            StartCoroutine(ApplySrpFoveationAfterDisplayStarts());
+            ScheduleSrpFoveationReapply();
 #endif
 #if ENABLE_PICO_OPENXR_SDK
 #else
@@ -332,12 +336,24 @@ namespace ByteDance.PICO.XR
         }
 
 #if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
+        private Coroutine srpFoveationReapplyCoroutine;
+
+        private void ScheduleSrpFoveationReapply()
+        {
+            if (srpFoveationReapplyCoroutine == null)
+            {
+                srpFoveationReapplyCoroutine = StartCoroutine(ApplySrpFoveationAfterDisplayStarts());
+            }
+        }
+
         private IEnumerator ApplySrpFoveationAfterDisplayStarts()
         {
-            while (!PXR_SrpFoveationRendering.TryApplyProjectSettings())
+            while (!PXR_SrpFoveationRendering.TryReapplyLastRequestedState())
             {
                 yield return null;
             }
+
+            srpFoveationReapplyCoroutine = null;
         }
 #endif
 
@@ -455,6 +471,9 @@ namespace ByteDance.PICO.XR
 
         public void PollEvent(XrEventDataBuffer eventDB)
         {
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+            SpatialImageTrackingRuntimeEventRouter.Dispatch(eventDB);
+#endif
             switch (eventDB.type)
             {
                 case XrStructureType.XR_TYPE_EVENT_DATA_SENSE_DATA_PROVIDER_STATE_CHANGED:
@@ -634,33 +653,62 @@ namespace ByteDance.PICO.XR
             }
         }
 
+        public static bool IsSpaceWarpAllowedForCurrentSdk(PxrReprojectionMode reprojectionMode)
+        {
+#if ENABLE_PICO_XR_SDK
+            return reprojectionMode == PxrReprojectionMode.AppSW;
+#else
+            return true;
+#endif
+        }
+
         public void SetSpaceWarp(bool enabled)
         {
+#if ENABLE_PICO_XR_SDK
+            PXR_Settings settings = PXR_Settings.GetSettings();
+            if (settings == null || !IsSpaceWarpAllowedForCurrentSdk(settings.reprojectionMode))
+            {
+                return;
+            }
+#endif
+
             for (int i = 0; i < 3; i++)
             {
-                if (eyeCamera[i] != null && eyeCamera[i].enabled)
+                Camera camera = eyeCamera[i];
+                if (camera == null)
                 {
-                    if (enabled)
-                    {
-                        m_CachedDepthTextureMode = eyeCamera[i].depthTextureMode;
-                        eyeCamera[i].depthTextureMode |= (DepthTextureMode.MotionVectors | DepthTextureMode.Depth);
+                    continue;
+                }
 
-                        if (eyeCamera[i].transform.parent == null)
-                        {
-                            m_AppSpaceTransform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
-                        }
-                        else
-                        {
-                            m_AppSpaceTransform = eyeCamera[i].transform.parent;
-                        }
-                    }
-                    else
+                if (enabled)
+                {
+                    if (!camera.enabled)
                     {
-                        eyeCamera[i].depthTextureMode = m_CachedDepthTextureMode;
-                        m_AppSpaceTransform = null;
+                        continue;
                     }
+
+                    if (!m_CachedDepthTextureModes.ContainsKey(camera))
+                    {
+                        m_CachedDepthTextureModes.Add(camera, camera.depthTextureMode);
+                    }
+
+                    camera.depthTextureMode |= (DepthTextureMode.MotionVectors | DepthTextureMode.Depth);
+                    m_AppSpaceTransform = camera.transform.parent != null
+                        ? camera.transform.parent
+                        : camera.transform;
+                }
+                else if (m_CachedDepthTextureModes.TryGetValue(camera, out DepthTextureMode depthTextureMode))
+                {
+                    camera.depthTextureMode = depthTextureMode;
                 }
             }
+
+            if (!enabled)
+            {
+                m_CachedDepthTextureModes.Clear();
+                m_AppSpaceTransform = null;
+            }
+
             PXR_Plugin.Render.UPxr_SetSpaceWarp(enabled);
             appSpaceWarp = enabled;
         }

@@ -19,9 +19,12 @@ namespace ByteDance.PICO.XR
 
         public static void SyncSpatialAdapterSpatialMode()
         {
+        //Sync only on Android/APK mode not for Play-to-PICO (SpatialNativeApi isn't supported)
+#if !(UNITY_EDITOR || UNITY_STANDALONE)
             var spatialMode = GetSpatialMode();
             //Debug.Log($"SyncSpatialAdapterSpatialMode: {spatialMode}");
             SpatialNativeApi.Pmp_SetSpatialAdapterSpatialMode((int)spatialMode);
+#endif
         }
     }
 }

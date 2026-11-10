@@ -193,6 +193,8 @@ namespace ByteDance.PICO.SecureMR
             Dictionary<string, object> opSpec)
         {
             var type = FormatOperatorType(GetString(opSpec, "type"));
+            var inputSlots = ReadTensorSlots(GetValue(opSpec, "inputs"));
+            var outputSlots = ReadTensorSlots(GetValue(opSpec, "outputs"));
             var inputs = ReadTensorList(GetValue(opSpec, "inputs"));
             var outputs = ReadTensorList(GetValue(opSpec, "outputs"));
             switch (type)
@@ -233,12 +235,12 @@ namespace ByteDance.PICO.SecureMR
                 case "apply_affine_point":
                 {
                     var op = pipeline.CreateOperator<ApplyAffinePointOperator>();
-                    op.SetOperand("affine", Resolve(inputs[0], tensors).tensor);
-                    op.SetOperand("src", Resolve(inputs[1], tensors).tensor);
-                    op.SetResult("dst", Resolve(outputs[0], tensors).tensor);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "affine", "apply_affine_point affine input");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 1, "src points", "apply_affine_point points input");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "dst points", "apply_affine_point output", true);
                     break;
                 }
-                case "assignment": CreateAssignment(pipeline, tensors, inputs[0], outputs[0]); break;
+                case "assignment": CreateAssignment(pipeline, tensors, inputs[0], outputs[0], opSpec); break;
                 case "type_convert": CreateAssignment(pipeline, tensors, inputs[0], outputs[0]); break;
                 case "cvt_color":
                 {
@@ -275,26 +277,36 @@ namespace ByteDance.PICO.SecureMR
                 case "all":
                 {
                     var op = pipeline.CreateOperator<AllOperator>();
-                    BindUnaryOperator(op, tensors, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "operand", "all input");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "result", "all output", true);
                     break;
                 }
                 case "any":
                 {
                     var op = pipeline.CreateOperator<AnyOperator>();
-                    BindUnaryOperator(op, tensors, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "operand", "any input");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "result", "any output", true);
                     break;
                 }
                 case "nms":
                 {
                     var op = pipeline.CreateOperator<NmsOperator>(
-                        new NmsOperatorConfiguration(GetFloatOrAttr(opSpec, "threshold", 0.5f)));
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                        new NmsOperatorConfiguration(GetFloatOrAttr(opSpec, "threshold", 0.95f)));
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "scores", "nms scores input");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 1, "boxes", "nms boxes input");
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 0, "scores", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 1, "boxes", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 2, "indices", true);
                     break;
                 }
                 case "solve_pnp":
                 {
                     var op = pipeline.CreateOperator<SolvePnPOperator>();
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "object points", "solve_pnp object points input");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 1, "image points", "solve_pnp image points input");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 2, "camera matrix", "solve_pnp camera matrix input");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "rotation", "solve_pnp rotation output", true);
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 1, "translation", "solve_pnp translation output", true);
                     break;
                 }
                 case "uv2_cam":
@@ -322,15 +334,17 @@ namespace ByteDance.PICO.SecureMR
                     var op = pipeline.CreateOperator<NormalizeOperator>(
                         new NormalizeOperatorConfiguration(
                             ParseNormalizeType(GetStringOrAttr(opSpec, "normalize_type", "l2"))));
-                    BindUnaryOperator(op, tensors, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "operand0", "normalize input");
+                    BindOptionalTensorSlot(op, tensors, inputSlots, 1, "alpha_beta");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "result", "normalize output", true);
                     break;
                 }
                 case "cam_space_to_xr_local":
                 {
                     var op = pipeline.CreateOperator<CameraSpaceToWorldOperator>();
-                    op.SetOperand("timestamp", Resolve(inputs[0], tensors).tensor);
-                    var eye = GetString(opSpec, "eye", "left").ToLowerInvariant();
-                    op.SetResult(eye == "right" ? "right" : "left", Resolve(outputs[0], tensors).tensor);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "timestamp", "camera_space_to_world input");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "right", "camera_space_to_world right output", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 1, "left", true);
                     break;
                 }
                 case "compare_to":
@@ -353,7 +367,9 @@ namespace ByteDance.PICO.SecureMR
                 case "sort_vector":
                 {
                     var op = pipeline.CreateOperator<SortVectorOperator>();
-                    BindUnaryOperator(op, tensors, inputs, outputs, "operand", "result");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "input", "sort_vector input");
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 0, "sorted", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 1, "indices", true);
                     break;
                 }
                 case "inversion":
@@ -369,19 +385,29 @@ namespace ByteDance.PICO.SecureMR
                     if (string.IsNullOrEmpty(sortMode)) sortMode = GetStringOrAttr(opSpec, "axis", "row");
                     var op = pipeline.CreateOperator<SortMatrixOperator>(
                         new SortMatrixOperatorConfiguration(ParseMatrixSortType(sortMode)));
-                    BindUnaryOperator(op, tensors, inputs, outputs, "operand", "result");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "input", "sort_matrix input");
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 0, "sorted", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 1, "indices", true);
                     break;
                 }
                 case "svd":
                 {
                     var op = pipeline.CreateOperator<SvdOperator>();
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "src", "svd input");
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 0, "w", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 1, "u", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 2, "vt", true);
                     break;
                 }
                 case "norm":
                 {
-                    var op = pipeline.CreateOperator<NormOperator>();
-                    BindUnaryOperator(op, tensors, inputs, outputs, "operand", "result");
+                    var attrs = GetList(opSpec, "attrs");
+                    if (attrs != null && attrs.Count > 1)
+                        throw new InvalidOperationException("Norm accepts at most one attrs value.");
+                    var op = pipeline.CreateOperator<NormOperator>(
+                        new NormOperatorConfiguration(GetStringOrAttr(opSpec, "norm_type", "L2")));
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "operand", "norm input");
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "result", "norm output", true);
                     break;
                 }
                 case "swap_hwc_chw":
@@ -410,13 +436,13 @@ namespace ByteDance.PICO.SecureMR
                     var height = parts.Length > 3 ? ParseInt(parts[3], 64) : GetInt(opSpec, "canvas_height", 64);
                     var op = pipeline.CreateOperator<RenderTextOperator>(
                         new RenderTextOperatorConfiguration(ParseTypeface(typeface), locale, width, height));
-                    var gltfName = GetTensorName(opSpec, inputs, "gltf", 0);
+                    var gltfName = GetTensorName(opSpec, inputs, "gltf", 3);
                     op.SetOperand("gltf", Resolve(gltfName, tensors).tensor);
                     BindOptionalOperand(op, tensors, opSpec, inputs, "start", "start", 1);
                     BindOptionalOperand(op, tensors, opSpec, inputs, "colors", "colors", 2);
-                    BindOptionalOperand(op, tensors, opSpec, inputs, "texture ID", "texture_id", 3);
-                    BindOptionalOperand(op, tensors, opSpec, inputs, "font size", "font_size", 4);
-                    var textName = GetTensorName(opSpec, inputs, "text_tensor", 5);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "texture ID", "texture_id", 4);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "font size", "font_size", 5);
+                    var textName = GetTensorName(opSpec, inputs, "text_tensor", 0);
                     if (!string.IsNullOrEmpty(textName))
                     {
                         op.SetOperand("text", Resolve(textName, tensors).tensor);
@@ -444,11 +470,32 @@ namespace ByteDance.PICO.SecureMR
                 {
                     var updateType = GetString(opSpec, "update_type");
                     if (string.IsNullOrEmpty(updateType)) updateType = GetStringOrAttr(opSpec, "attribute");
+                    var attribute = ParseGltfAttribute(updateType);
                     var op = pipeline.CreateOperator<UpdateGltfOperator>(
-                        new UpdateGltfOperatorConfiguration(ParseGltfAttribute(updateType)));
+                        new UpdateGltfOperatorConfiguration(attribute));
                     op.SetOperand("gltf", Resolve(GetTensorName(opSpec, inputs, "gltf", 0), tensors).tensor);
-                    BindOptionalOperand(op, tensors, opSpec, inputs, "value", "value", 1);
-                    BindOptionalOperand(op, tensors, opSpec, inputs, "material ID", "material_id", 2);
+                    switch (attribute)
+                    {
+                        case SecureMRGltfOperatorAttribute.Texture:
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "texture ID", "texture_id", 1);
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "rgb image", "rgb_image", 2);
+                            break;
+                        case SecureMRGltfOperatorAttribute.Animation:
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "animation ID", "animation_id", 1);
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "animation timer", "animation_timer", 2);
+                            break;
+                        case SecureMRGltfOperatorAttribute.WorldPose:
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "world pose", "world_pose", 1);
+                            break;
+                        case SecureMRGltfOperatorAttribute.LocalTransform:
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "node ID", "node_id", 1);
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "transform", "transform", 2);
+                            break;
+                        default:
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "material ID", "material_id", 1);
+                            BindOptionalOperand(op, tensors, opSpec, inputs, "value", "value", 2);
+                            break;
+                    }
                     break;
                 }
                 case "render_gltf":
@@ -456,41 +503,47 @@ namespace ByteDance.PICO.SecureMR
                     var op = pipeline.CreateOperator<SwitchGltfRenderStatusOperator>();
                     op.SetOperand("gltf", Resolve(GetTensorName(opSpec, inputs, "gltf", 0), tensors).tensor);
                     BindOptionalOperand(op, tensors, opSpec, inputs, "world pose", "pose", 1);
-                    BindOptionalOperand(op, tensors, opSpec, inputs, "view locked", "view_locked", 2);
-                    BindOptionalOperand(op, tensors, opSpec, inputs, "is visible", "visible", 3);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "visible", "visible", 2);
+                    BindOptionalOperand(op, tensors, opSpec, inputs, "view locked", "view_locked", 3);
                     break;
                 }
                 case "scenegraph_visibility":
                 {
                     var op = pipeline.CreateOperator<ScenegraphVisibilityOperator>();
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "scenegraph", "scenegraph_visibility input");
+                    BindOptionalTensorSlot(op, tensors, inputSlots, 1, "visible");
                     break;
                 }
                 case "update_component":
                 {
-                    var op = pipeline.CreateOperator<UpdateComponentOperator>(new UpdateComponentOperatorConfiguration(
-                        GetString(opSpec, "entity_path"), GetString(opSpec, "target_property_path")));
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                    ParseComponentPath(GetRequiredSingleAttr(opSpec, "update_component"), out var entityPath,
+                        out var targetPropertyPath);
+                    var op = pipeline.CreateOperator<UpdateComponentOperator>(
+                        new UpdateComponentOperatorConfiguration(entityPath, targetPropertyPath));
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "scenegraph", "update_component scenegraph input");
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 1, "data", "update_component data input");
                     break;
                 }
                 case "microphone":
                 {
-                    var op = pipeline.CreateOperator<MicrophoneOperator>(new MicrophoneOperatorConfiguration(
-                        GetInt(opSpec, "sample_rate", 16000), GetString(opSpec, "pcm_type", "int16")));
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                    ParseMicrophoneConfig(opSpec, out var sampleRate, out var pcmType);
+                    var op = pipeline.CreateOperator<MicrophoneOperator>(
+                        new MicrophoneOperatorConfiguration(sampleRate, pcmType));
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "stereo audio", "microphone stereo output", true);
+                    BindOptionalTensorSlot(op, tensors, outputSlots, 1, "timestamp", true);
                     break;
                 }
                 case "speaker":
                 {
                     var op = pipeline.CreateOperator<SpeakerOperator>(
-                        new SpeakerOperatorConfiguration(GetInt(opSpec, "sample_rate", 16000)));
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                        new SpeakerOperatorConfiguration(ParseSpeakerSampleRate(opSpec)));
+                    BindRequiredTensorSlot(op, tensors, inputSlots, 0, "audio", "speaker input");
                     break;
                 }
                 case "depth":
                 {
                     var op = pipeline.CreateOperator<DepthOperator>();
-                    BindNamedOrSequentialOperator(op, tensors, opSpec, inputs, outputs);
+                    BindRequiredTensorSlot(op, tensors, outputSlots, 0, "depth map", "depth output", true);
                     break;
                 }
                 default: throw new NotSupportedException($"Unsupported SpatialML pipeline operator '{type}'.");
@@ -534,31 +587,32 @@ namespace ByteDance.PICO.SecureMR
                 op.SetOperand(operandName, Resolve(tensorName, tensors).tensor);
         }
 
-        private static void BindNamedOrSequentialOperator(Operator op, Dictionary<string, Tensor> tensors,
-            Dictionary<string, object> opSpec, List<string> inputs, List<string> outputs)
+        private static void BindRequiredTensorSlot(
+            Operator op,
+            Dictionary<string, Tensor> tensors,
+            List<string> slots,
+            int index,
+            string bindingName,
+            string description,
+            bool result = false)
         {
-            var inputsValue = GetValue(opSpec, "inputs");
-            var outputsValue = GetValue(opSpec, "outputs");
-            var hasNamedInputs = HasNamedTensorMappings(inputsValue);
-            var hasNamedOutputs = HasNamedTensorMappings(outputsValue);
+            if (index >= slots.Count || string.IsNullOrEmpty(slots[index]))
+                throw new InvalidOperationException($"Missing required {description}.");
+            if (result) op.SetResult(bindingName, Resolve(slots[index], tensors).tensor);
+            else op.SetOperand(bindingName, Resolve(slots[index], tensors).tensor);
+        }
 
-            if (hasNamedInputs)
-            {
-                foreach (var pair in ReadMappedTensorList(inputsValue)) op.SetOperand(pair.alias, Resolve(pair.tensor, tensors).tensor);
-            }
-            else
-            {
-                for (var i = 0; i < inputs.Count; i++) op.SetOperand($"operand{i}", Resolve(inputs[i], tensors).tensor);
-            }
-
-            if (hasNamedOutputs)
-            {
-                foreach (var pair in ReadMappedTensorList(outputsValue)) op.SetResult(pair.alias, Resolve(pair.tensor, tensors).tensor);
-            }
-            else
-            {
-                for (var i = 0; i < outputs.Count; i++) op.SetResult($"result{i}", Resolve(outputs[i], tensors).tensor);
-            }
+        private static void BindOptionalTensorSlot(
+            Operator op,
+            Dictionary<string, Tensor> tensors,
+            List<string> slots,
+            int index,
+            string bindingName,
+            bool result = false)
+        {
+            if (index >= slots.Count || string.IsNullOrEmpty(slots[index])) return;
+            if (result) op.SetResult(bindingName, Resolve(slots[index], tensors).tensor);
+            else op.SetOperand(bindingName, Resolve(slots[index], tensors).tensor);
         }
 
         private static void CreateModelOperator(
@@ -621,21 +675,76 @@ namespace ByteDance.PICO.SecureMR
             };
         }
 
-        private static void CreateAssignment(Pipeline pipeline, Dictionary<string, Tensor> tensors, string input, string output)
+        private static void CreateAssignment(Pipeline pipeline, Dictionary<string, Tensor> tensors, string input,
+            string output, Dictionary<string, object> opSpec = null)
         {
-            var src = Resolve(input, tensors);
-            var dst = Resolve(output, tensors);
+            var src = ResolveAssignmentReference(input, tensors, opSpec, "src");
+            var dst = ResolveAssignmentReference(output, tensors, opSpec, "dst");
             var op = pipeline.CreateOperator<AssignmentOperator>();
             op.SetOperand("src", src.tensor);
-            if (src.slices != null) op.SetOperand("src slices", CreateSliceTensor(pipeline, src.slices));
-            if (dst.slices != null) op.SetOperand("dst slices", CreateSliceTensor(pipeline, dst.slices));
+            if (src.slices != null) op.SetOperand("src slices", CreateSliceTensor(pipeline, src.slices, src.sliceChannels));
+            if (src.channelSlice != null) op.SetOperand("src channel slice", CreateSliceTensor(pipeline, src.channelSlice, 3));
+            if (dst.slices != null) op.SetOperand("dst slices", CreateSliceTensor(pipeline, dst.slices, dst.sliceChannels));
+            if (dst.channelSlice != null) op.SetOperand("dst channel slice", CreateSliceTensor(pipeline, dst.channelSlice, 3));
             op.SetResult("dst", dst.tensor);
         }
 
-        private static Tensor CreateSliceTensor(Pipeline pipeline, int[] slices)
+        private static (Tensor tensor, int[] slices, int sliceChannels, int[] channelSlice) ResolveAssignmentReference(
+            string expression, Dictionary<string, Tensor> tensors, Dictionary<string, object> opSpec, string side)
         {
-            var rank = Math.Max(1, slices.Length / 2);
-            return pipeline.CreateTensor<int, Slice>(2, new TensorShape(new[] { rank }), slices);
+            var reference = Resolve(expression, tensors);
+            var dimensionField = side + "_slices";
+            var channelField = side + "_channel_slice";
+            var dimensions = GetValue(opSpec, dimensionField);
+            var channel = GetValue(opSpec, channelField);
+            if (dimensions == null && channel == null)
+                return (reference.tensor, reference.slices, 2, null);
+            if (reference.tensor.Dimensions == null || reference.tensor.Dimensions.Length == 0)
+                throw new InvalidOperationException($"Assignment slices require a numeric tensor: {expression}");
+            if (dimensions != null && reference.slices != null)
+                throw new InvalidOperationException($"Assignment cannot combine bracket slicing with {dimensionField}.");
+
+            var slices = reference.slices;
+            var sliceChannels = 2;
+            if (dimensions != null)
+            {
+                if (!(dimensions is List<object> rows) || rows.Count != reference.tensor.Dimensions.Length)
+                    throw new InvalidOperationException($"{dimensionField} must have one slice per tensor dimension.");
+                slices = rows.SelectMany(row => ParseAssignmentSlice(row, dimensionField)).ToArray();
+                sliceChannels = 3;
+            }
+            var channelSlice = channel == null ? null : ParseAssignmentSlice(channel, channelField);
+            return (reference.tensor, slices, sliceChannels, channelSlice);
+        }
+
+        private static int[] ParseAssignmentSlice(object value, string field)
+        {
+            if (!(value is List<object> parts) || parts.Count < 1 || parts.Count > 3)
+                throw new InvalidOperationException($"{field} must contain 1 to 3 integers per slice.");
+            var values = new int[parts.Count];
+            for (var index = 0; index < parts.Count; index++)
+            {
+                if (!(parts[index] is int) && !(parts[index] is long))
+                    throw new InvalidOperationException($"{field} must contain integers, not strings or fractional values.");
+                var number = Convert.ToInt64(parts[index], CultureInfo.InvariantCulture);
+                if (number < int.MinValue || number > int.MaxValue)
+                    throw new InvalidOperationException($"{field} values must fit in INT32.");
+                values[index] = (int)number;
+            }
+            var start = values[0];
+            if (values.Length == 1 && start == int.MaxValue)
+                throw new InvalidOperationException($"{field} index is too large to form a slice.");
+            var end = values.Length == 1 ? start + 1 : values[1];
+            var step = values.Length == 3 ? values[2] : 1;
+            if (start < -1 || end < -1 || step == 0)
+                throw new InvalidOperationException($"{field} requires indices >= -1 and a nonzero step.");
+            return new[] { start, end, step };
+        }
+
+        private static Tensor CreateSliceTensor(Pipeline pipeline, int[] slices, int channels)
+        {
+            var rank = Math.Max(1, slices.Length / channels);
+            return pipeline.CreateTensor<int, Slice>(channels, new TensorShape(new[] { rank }), slices);
         }
 
         private static (Tensor tensor, int[] slices) Resolve(string expression, Dictionary<string, Tensor> tensors)
@@ -713,6 +822,19 @@ namespace ByteDance.PICO.SecureMR
                 else if (item is Dictionary<string, object> o) output.Add(GetString(o, "tensor"));
             }
             return output.Where(s => !string.IsNullOrEmpty(s)).ToList();
+        }
+
+        private static List<string> ReadTensorSlots(object value)
+        {
+            var output = new List<string>();
+            if (!(value is List<object> list)) return output;
+            foreach (var item in list)
+            {
+                if (item is string s) output.Add(s);
+                else if (item is Dictionary<string, object> o) output.Add(GetString(o, "tensor"));
+                else output.Add(string.Empty);
+            }
+            return output;
         }
 
         private static List<(string alias, string tensor)> ReadMappedTensorList(object value)
@@ -815,6 +937,47 @@ namespace ByteDance.PICO.SecureMR
                 : fallback;
         }
 
+        private static void ParseMicrophoneConfig(
+            Dictionary<string, object> opSpec, out int sampleRate, out string pcmType)
+        {
+            var config = GetRequiredSingleAttr(opSpec, "microphone");
+            var parts = config.Split(';');
+            if (parts.Length != 2 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out sampleRate))
+                throw new InvalidOperationException("Microphone attrs[0] must be <sample_rate>;<encoding>.");
+            pcmType = parts[1];
+            if (sampleRate < 8000 || sampleRate > 96000)
+                throw new InvalidOperationException("Microphone sample rate must be between 8000 and 96000 Hz.");
+            if (pcmType != "PCM_16BIT" && pcmType != "PCM_32BIT" && pcmType != "PCM_FLOAT")
+                throw new InvalidOperationException("Microphone encoding must be PCM_16BIT, PCM_32BIT, or PCM_FLOAT.");
+        }
+
+        private static int ParseSpeakerSampleRate(Dictionary<string, object> opSpec)
+        {
+            var config = GetRequiredSingleAttr(opSpec, "speaker");
+            if (!int.TryParse(config, NumberStyles.Integer, CultureInfo.InvariantCulture, out var sampleRate) ||
+                sampleRate < 8000 || sampleRate > 96000)
+                throw new InvalidOperationException("Speaker attrs[0] must be a sample rate between 8000 and 96000 Hz.");
+            return sampleRate;
+        }
+
+        private static void ParseComponentPath(
+            string componentPath, out string entityPath, out string targetPropertyPath)
+        {
+            var separator = componentPath.IndexOf(':');
+            if (separator <= 0 || componentPath[0] != '/' || separator == componentPath.Length - 1)
+                throw new InvalidOperationException("Update component attrs[0] must be /entity/path:component.field.");
+            entityPath = componentPath.Substring(0, separator);
+            targetPropertyPath = componentPath.Substring(separator + 1);
+        }
+
+        private static string GetRequiredSingleAttr(Dictionary<string, object> opSpec, string operatorName)
+        {
+            var attrs = GetList(opSpec, "attrs");
+            if (attrs == null || attrs.Count != 1 || attrs[0] == null || string.IsNullOrEmpty(attrs[0].ToString()))
+                throw new InvalidOperationException($"{operatorName} requires exactly one attrs value.");
+            return attrs[0].ToString();
+        }
+
         private static SecureMRComparison ParseComparison(string value)
         {
             if (value == ">") return SecureMRComparison.LargerThan;
@@ -842,7 +1005,20 @@ namespace ByteDance.PICO.SecureMR
         }
 
         private static SecureMRModelTarget ParseModelTarget(string value) => value.ToLowerInvariant() == "cpu" ? SecureMRModelTarget.Cpu : value.ToLowerInvariant() == "gpu" ? SecureMRModelTarget.Gpu : SecureMRModelTarget.Npu;
-        private static SecureMRFontTypeface ParseTypeface(string value) => value.ToLowerInvariant() == "sans_serif" ? SecureMRFontTypeface.SansSerif : SecureMRFontTypeface.Default;
+        private static SecureMRFontTypeface ParseTypeface(string value)
+        {
+            switch (value.ToLowerInvariant())
+            {
+                case "sans":
+                case "sans-serif":
+                case "sans_serif": return SecureMRFontTypeface.SansSerif;
+                case "serif": return SecureMRFontTypeface.Serif;
+                case "monospace": return SecureMRFontTypeface.Monospace;
+                case "bold": return SecureMRFontTypeface.Bold;
+                case "italic": return SecureMRFontTypeface.Italic;
+                default: return SecureMRFontTypeface.Default;
+            }
+        }
 
         private static SecureMRNormalizeType ParseNormalizeType(string value)
         {
@@ -863,21 +1039,22 @@ namespace ByteDance.PICO.SecureMR
 
         private static SecureMRGltfOperatorAttribute ParseGltfAttribute(string value)
         {
-            value = value.ToLowerInvariant();
+            value = value.Trim().ToLowerInvariant();
             if (value == "texture") return SecureMRGltfOperatorAttribute.Texture;
             if (value == "animation") return SecureMRGltfOperatorAttribute.Animation;
-            if (value == "world_pose") return SecureMRGltfOperatorAttribute.WorldPose;
-            if (value == "local_transform") return SecureMRGltfOperatorAttribute.LocalTransform;
-            if (value == "material_metallic_factor") return SecureMRGltfOperatorAttribute.MaterialMetallicFactor;
-            if (value == "material_roughness_factor") return SecureMRGltfOperatorAttribute.MaterialRoughnessFactor;
-            if (value == "material_occlusion_map_texture") return SecureMRGltfOperatorAttribute.MaterialOcclusionMapTexture;
-            if (value == "material_base_color_factor") return SecureMRGltfOperatorAttribute.MaterialBaseColorFactor;
-            if (value == "material_emissive_factor") return SecureMRGltfOperatorAttribute.MaterialEmissiveFactor;
-            if (value == "material_emissive_strength") return SecureMRGltfOperatorAttribute.MaterialEmissiveStrength;
-            if (value == "material_emissive_texture") return SecureMRGltfOperatorAttribute.MaterialEmissiveTexture;
-            if (value == "material_normal_map_texture") return SecureMRGltfOperatorAttribute.MaterialNormalMapTexture;
-            if (value == "material_metallic_roughness_texture") return SecureMRGltfOperatorAttribute.MaterialMetallicRoughnessTexture;
-            return SecureMRGltfOperatorAttribute.MaterialBaseColorTexture;
+            if (value == "world pose" || value == "world_pose") return SecureMRGltfOperatorAttribute.WorldPose;
+            if (value == "local" || value == "local_transform") return SecureMRGltfOperatorAttribute.LocalTransform;
+            if (value == "material::metallic_factor" || value == "material_metallic_factor") return SecureMRGltfOperatorAttribute.MaterialMetallicFactor;
+            if (value == "material::roughness_factor" || value == "material_roughness_factor") return SecureMRGltfOperatorAttribute.MaterialRoughnessFactor;
+            if (value == "material::occlusion_texture" || value == "material_occlusion_map_texture") return SecureMRGltfOperatorAttribute.MaterialOcclusionMapTexture;
+            if (value == "material::base_color_factor" || value == "material_base_color_factor") return SecureMRGltfOperatorAttribute.MaterialBaseColorFactor;
+            if (value == "material::emissive_factor" || value == "material_emissive_factor") return SecureMRGltfOperatorAttribute.MaterialEmissiveFactor;
+            if (value == "material::emissive_strength" || value == "material_emissive_strength") return SecureMRGltfOperatorAttribute.MaterialEmissiveStrength;
+            if (value == "material::emissive_texture" || value == "material_emissive_texture") return SecureMRGltfOperatorAttribute.MaterialEmissiveTexture;
+            if (value == "material::normal_map_texture" || value == "material_normal_map_texture") return SecureMRGltfOperatorAttribute.MaterialNormalMapTexture;
+            if (value == "material::metallic_roughness_texture" || value == "material_metallic_roughness_texture") return SecureMRGltfOperatorAttribute.MaterialMetallicRoughnessTexture;
+            if (value == "material::base_color_texture" || value == "material_base_color_texture") return SecureMRGltfOperatorAttribute.MaterialBaseColorTexture;
+            throw new InvalidOperationException($"Unsupported UPDATE_GLTF attribute: {value}");
         }
 
         private static string FormatOperatorType(string type)
@@ -898,12 +1075,14 @@ namespace ByteDance.PICO.SecureMR
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_ANY_PICO") return "any";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_RUN_MODEL_INFERENCE_PICO") return "run_algorithm";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_JAVASCRIPT_PICO") return "javascript";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_JS_SCRIPTING_PICO") return "javascript";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_NORMALIZE_PICO") return "normalize";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_UV_TO_3D_IN_CAM_SPACE_PICO") return "uv2_cam";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_UV_TO_3D_IN_CAMERA_SPACE_PICO") return "uv2_cam";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_CAMERA_SPACE_TO_WORLD_PICO") return "cam_space_to_xr_local";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_GET_TRANSFORM_MAT_PICO") return "transform";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_GET_TRANSFORM_MATRIX_PICO") return "transform";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_MAKE_TRANSFORM_MAT_PICO") return "transform";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_CUSTOMIZED_COMPARE_PICO") return "compare_to";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_ARGMAX_PICO") return "argmax";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_VECTOR_PICO") return "sort_vector";
@@ -912,15 +1091,18 @@ namespace ByteDance.PICO.SecureMR
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_MATRIX_PICO") return "sort_matrix";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SORT_MAT_PICO") return "sort_matrix";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_LOAD_TEXTURE_PICO") return "load_texture";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_UPLOAD_TEXTURE_TO_GLTF_PICO") return "load_texture";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_UPDATE_GLTF_PICO") return "update_gltf";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_RENDER_TEXT_PICO") return "draw_text";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SWITCH_GLTF_RENDER_STATUS_PICO") return "render_gltf";
-            if (type == "XR_SECURE_MR_OPERATOR_TYPE_SCENEGRAPH_VISIBILITY_PICO") return "scenegraph_visibility";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_SSMR_SWITCH_VISIBILITY_PICO" ||
+                type == "XR_SECURE_MR_OPERATOR_TYPE_SCENEGRAPH_VISIBILITY_PICO") return "scenegraph_visibility";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_UPDATE_COMPONENT_PICO") return "update_component";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_MICROPHONE_PICO") return "microphone";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SPEAKER_PICO") return "speaker";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_DEPTH_PICO") return "depth";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SWAP_HWC_CHW_PICO") return "swap_hwc_chw";
+            if (type == "XR_SECURE_MR_OPERATOR_TYPE_CHW_HWC_PICO") return "swap_hwc_chw";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_NMS_PICO") return "nms";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_NON_MAXIMUM_SUPPRESSION_PICO") return "nms";
             if (type == "XR_SECURE_MR_OPERATOR_TYPE_SOLVE_PNP_PICO" ||
@@ -1038,19 +1220,43 @@ namespace ByteDance.PICO.SecureMR
                 }
                 private string ParseString()
                 {
+                    if (index >= json.Length || json[index] != '"')
+                        throw new FormatException($"Expected JSON string at {index}");
                     index++;
-                    var s = new System.Text.StringBuilder();
-                    while (index < json.Length && json[index] != '"')
+                    var s = new StringBuilder();
+                    while (index < json.Length)
                     {
-                        if (json[index] == '\\')
+                        var c = json[index++];
+                        if (c == '"') return s.ToString();
+                        if (c < ' ')
+                            throw new FormatException("Unescaped control character in JSON string");
+                        if (c != '\\')
                         {
-                            index++;
-                            if (json[index] == 'n') s.Append('\n'); else if (json[index] == 'r') s.Append('\r'); else if (json[index] == 't') s.Append('\t'); else s.Append(json[index]);
+                            s.Append(c);
+                            continue;
                         }
-                        else s.Append(json[index]);
-                        index++;
+                        if (index >= json.Length) break;
+                        switch (json[index++])
+                        {
+                            case '"': s.Append('"'); break;
+                            case '\\': s.Append('\\'); break;
+                            case '/': s.Append('/'); break;
+                            case 'b': s.Append('\b'); break;
+                            case 'f': s.Append('\f'); break;
+                            case 'n': s.Append('\n'); break;
+                            case 'r': s.Append('\r'); break;
+                            case 't': s.Append('\t'); break;
+                            case 'u':
+                                if (index + 4 > json.Length || !ushort.TryParse(json.Substring(index, 4),
+                                    NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var codeUnit))
+                                    throw new FormatException("Invalid JSON Unicode escape");
+                                s.Append((char)codeUnit);
+                                index += 4;
+                                break;
+                            default: throw new FormatException($"Invalid JSON escape at {index - 1}");
+                        }
                     }
-                    index++; return s.ToString();
+                    throw new FormatException("Unterminated JSON string");
                 }
                 private object ParseNumber()
                 {

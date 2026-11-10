@@ -38,8 +38,17 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
         internal bool m_disableUnlitTonemapping = false;
 
         [SerializeField]
+        [Range(0f, 2.0f)]
+        [Tooltip("Scales spatial engine global image-based lighting. 0 uses direct lighting only (if dynamic lighting is enabled); 1 uses full global image-based lighting.")]
+        internal float m_globalImageBasedLightingScale = 1.0f;
+
+        [SerializeField]
         [Tooltip("Automatically adds SpatialAdapterHoverEffect to Unity UI Selectable objects at runtime.")]
         internal bool m_autoAddUIHoverEffect = false;
+
+        [SerializeField]
+        [Tooltip("Replicate and synchronize Unity scene point and directional lights to SpatialAdapter Backend.")]
+        internal bool m_enableDynamicLights = false;
 
         public const string k_SpatialAdapterSDKDefine = "PICO_MS_SDK";
         public const string k_PicoSDKPackageName = "com.bytedance.pico.xr";

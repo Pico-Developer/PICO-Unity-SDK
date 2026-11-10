@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/*******************************************************************************
 Copyright © 2015-2022 PICO Technology Co., Ltd.All rights reserved.  
 
 NOTICE：All information contained herein is, and remains the property of 
@@ -16,9 +16,6 @@ using UnityEditor;
 using System.Linq;
 using UnityEngine.SceneManagement;
 using UnityEngine.Rendering;
-#if AR_FOUNDATION_5 || AR_FOUNDATION_6
-using UnityEngine.XR.ARFoundation;
-#endif
 
 namespace ByteDance.PICO.XR.Editor
 {
@@ -29,18 +26,28 @@ namespace ByteDance.PICO.XR.Editor
         private const string AppMode = "appMode";
         private const string SystemDisplayFrequency = "systemDisplayFrequency";
         private const string OptimizeBufferDiscards = "optimizeBufferDiscards";
+        private const string ReprojectionMode = "reprojectionMode";
         private const string SystemSplashScreen = "systemSplashScreen";
+        private const float ReprojectionToggleSize = 16.0f;
+        private const float ReprojectionToggleSpacing = 4.0f;
+        public const string PtwEnabledInfoMessage =
+            "When enabled, application depth is captured and submitted automatically.";
 
         static GUIContent guiStereoRenderingMode = EditorGUIUtility.TrTextContent("Stereo Rendering Mode");
         static GUIContent guiDisplayFrequency = EditorGUIUtility.TrTextContent("Display Refresh Rates");
         private static GUIContent guiOptimizeBuffer = EditorGUIUtility.TrTextContent("Optimize Buffer Discards(Vulkan)");
         static GUIContent guiSystemSplashScreen = EditorGUIUtility.TrTextContent("System Splash Screen");
         static GUIContent guiAppMode = EditorGUIUtility.TrTextContent("App Mode");
+        private static readonly GUIContent GuiPositionalTimeWarp =
+            EditorGUIUtility.TrTextContent("Positional TimeWarp (Recommended)");
+        private static readonly GUIContent GuiApplicationSpaceWarp =
+            EditorGUIUtility.TrTextContent("Application SpaceWarp (Advanced)");
 
         private SerializedProperty appMode;
         private SerializedProperty stereoRenderingModeAndroid;
         private SerializedProperty systemDisplayFrequency;
         private SerializedProperty optimizeBufferDiscards;
+        private SerializedProperty reprojectionMode;
         private SerializedProperty appLog;
         private SerializedProperty systemSplashScreen;
         
@@ -48,6 +55,129 @@ namespace ByteDance.PICO.XR.Editor
         private static PXR_EditorStyles _styles;
         private static bool hasSpatialAdapterAllInstalled = true;
         private static bool hasSpatialAdapterAllUninstalled = true;
+
+        public readonly struct ReprojectionToggleLayout
+        {
+            public ReprojectionToggleLayout(Rect labelRect, Rect toggleRect, float height)
+            {
+                LabelRect = labelRect;
+                ToggleRect = toggleRect;
+                Height = height;
+            }
+
+            public Rect LabelRect { get; }
+            public Rect ToggleRect { get; }
+            public float Height { get; }
+        }
+
+        public readonly struct ReprojectionInspectorState
+        {
+            public ReprojectionInspectorState(
+                PxrReprojectionMode reprojectionMode,
+                bool optimizeBufferDiscards,
+                bool disableAppSpaceWarp,
+                bool disableOptimizeBufferDiscards)
+            {
+                ReprojectionMode = reprojectionMode;
+                OptimizeBufferDiscards = optimizeBufferDiscards;
+                DisableAppSpaceWarp = disableAppSpaceWarp;
+                DisableOptimizeBufferDiscards = disableOptimizeBufferDiscards;
+            }
+
+            public PxrReprojectionMode ReprojectionMode { get; }
+            public bool OptimizeBufferDiscards { get; }
+            public bool DisableAppSpaceWarp { get; }
+            public bool DisableOptimizeBufferDiscards { get; }
+        }
+
+        public static ReprojectionToggleLayout CalculateReprojectionToggleLayout(
+            Rect rowRect,
+            float preferredLabelWidth,
+            float labelHeight)
+        {
+            float availableLabelWidth =
+                Mathf.Max(1.0f, rowRect.width - ReprojectionToggleSize - ReprojectionToggleSpacing);
+            float labelWidth = Mathf.Min(preferredLabelWidth, availableLabelWidth);
+            float height = Mathf.Max(rowRect.height, labelHeight);
+            var labelRect = new Rect(rowRect.x, rowRect.y, labelWidth, height);
+            var toggleRect = new Rect(
+                labelRect.xMax + ReprojectionToggleSpacing,
+                rowRect.y + (rowRect.height - ReprojectionToggleSize) * 0.5f,
+                ReprojectionToggleSize,
+                ReprojectionToggleSize);
+
+            return new ReprojectionToggleLayout(labelRect, toggleRect, height);
+        }
+
+        public static ReprojectionInspectorState GetReprojectionInspectorState(
+            bool usesVulkan,
+            bool appSpaceWarpUnavailable,
+            PxrReprojectionMode reprojectionMode,
+            bool optimizeBufferDiscards)
+        {
+            bool disableAppSpaceWarp =
+                reprojectionMode == PxrReprojectionMode.PTW || appSpaceWarpUnavailable;
+            bool disableOptimizeBufferDiscards =
+                usesVulkan && reprojectionMode == PxrReprojectionMode.PTW;
+
+            return new ReprojectionInspectorState(
+                reprojectionMode,
+                optimizeBufferDiscards,
+                disableAppSpaceWarp,
+                disableOptimizeBufferDiscards);
+        }
+
+        public static ReprojectionInspectorState GetReprojectionInspectorStateAfterPtwToggle(
+            bool usesVulkan,
+            bool appSpaceWarpUnavailable,
+            PxrReprojectionMode currentMode,
+            bool requestedPtw,
+            bool optimizeBufferDiscards)
+        {
+            PxrReprojectionMode nextMode = requestedPtw
+                ? PxrReprojectionMode.PTW
+                : currentMode == PxrReprojectionMode.PTW
+                    ? PxrReprojectionMode.None
+                    : currentMode;
+            bool nextOptimizeBufferDiscards =
+                requestedPtw && usesVulkan
+                    ? false
+                    : optimizeBufferDiscards;
+
+            return GetReprojectionInspectorState(
+                usesVulkan,
+                appSpaceWarpUnavailable,
+                nextMode,
+                nextOptimizeBufferDiscards);
+        }
+
+        private static bool DrawReprojectionToggle(GUIContent label, bool value)
+        {
+            GUIStyle labelStyle = EditorStyles.wordWrappedLabel;
+            Rect rowRect =
+                EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
+            float preferredLabelWidth = Mathf.Ceil(labelStyle.CalcSize(label).x);
+            float availableLabelWidth = Mathf.Max(
+                1.0f,
+                rowRect.width - ReprojectionToggleSize - ReprojectionToggleSpacing);
+            float labelWidth = Mathf.Min(preferredLabelWidth, availableLabelWidth);
+            float labelHeight = Mathf.Ceil(labelStyle.CalcHeight(label, labelWidth));
+            ReprojectionToggleLayout layout = CalculateReprojectionToggleLayout(
+                rowRect,
+                preferredLabelWidth,
+                labelHeight);
+
+            EditorGUI.LabelField(layout.LabelRect, label, labelStyle);
+            bool result = EditorGUI.Toggle(layout.ToggleRect, value);
+
+            float additionalHeight = layout.Height - rowRect.height;
+            if (additionalHeight > 0.0f)
+            {
+                GUILayout.Space(additionalHeight);
+            }
+
+            return result;
+        }
 
         void OnEnable()
         {
@@ -59,6 +189,8 @@ namespace ByteDance.PICO.XR.Editor
                 systemDisplayFrequency = serializedObject.FindProperty(SystemDisplayFrequency);
             if (optimizeBufferDiscards == null)
                 optimizeBufferDiscards = serializedObject.FindProperty(OptimizeBufferDiscards);
+            if (reprojectionMode == null)
+                reprojectionMode = serializedObject.FindProperty(ReprojectionMode);
             if (systemSplashScreen == null)
                 systemSplashScreen = serializedObject.FindProperty(SystemSplashScreen);
             
@@ -99,35 +231,97 @@ namespace ByteDance.PICO.XR.Editor
                     projectConfig.isSpatialAdapter = false;
                     EditorGUILayout.PropertyField(stereoRenderingModeAndroid, guiStereoRenderingMode);
                     EditorGUILayout.PropertyField(systemDisplayFrequency, guiDisplayFrequency);
-                    EditorGUILayout.PropertyField(optimizeBufferDiscards, guiOptimizeBuffer);
 
                     bool aswDisabled = false;
 #if !UNITY_2021_1_OR_NEWER
                     aswDisabled = true;
 #endif
-                    if (GraphicsDeviceType.OpenGLES3 == PlayerSettings.GetGraphicsAPIs(EditorUserBuildSettings.activeBuildTarget)[0])
+                    GraphicsDeviceType[] graphicsApis =
+                        PlayerSettings.GetGraphicsAPIs(EditorUserBuildSettings.activeBuildTarget);
+                    bool supportsAppSpaceWarp =
+                        PXR_Settings.IsAppSpaceWarpGraphicsApiSupported(graphicsApis);
+                    bool usesVulkan =
+                        graphicsApis.Length > 0 && graphicsApis[0] == GraphicsDeviceType.Vulkan;
+                    bool usesMultiview =
+                        stereoRenderingModeAndroid.intValue ==
+                        (int)PXR_Settings.StereoRenderingModeAndroid.Multiview;
+                    bool appSpaceWarpUnavailable =
+                        !supportsAppSpaceWarp || aswDisabled || !usesMultiview;
+                    PxrReprojectionMode currentReprojectionMode =
+                        (PxrReprojectionMode)reprojectionMode.intValue;
+                    ReprojectionInspectorState inspectorState =
+                        GetReprojectionInspectorState(
+                            usesVulkan,
+                            appSpaceWarpUnavailable,
+                            currentReprojectionMode,
+                            optimizeBufferDiscards.boolValue);
+
+                    EditorGUI.BeginDisabledGroup(currentReprojectionMode == PxrReprojectionMode.AppSW);
+                    bool ptwEnabled = inspectorState.ReprojectionMode == PxrReprojectionMode.PTW;
+                    bool requestedPtw = DrawReprojectionToggle(
+                        GuiPositionalTimeWarp,
+                        ptwEnabled);
+                    EditorGUI.EndDisabledGroup();
+                    if (requestedPtw != ptwEnabled)
                     {
-                        GUI.enabled = false;
-                        serializedObject.FindProperty("enableAppSpaceWarp").boolValue = false;
-                        EditorGUILayout.PropertyField(serializedObject.FindProperty("enableAppSpaceWarp"), new GUIContent("Application SpaceWarp", "Set Graphics API to Vulkan."));
+                        inspectorState = GetReprojectionInspectorStateAfterPtwToggle(
+                            usesVulkan,
+                            appSpaceWarpUnavailable,
+                            inspectorState.ReprojectionMode,
+                            requestedPtw,
+                            inspectorState.OptimizeBufferDiscards);
+                        currentReprojectionMode = inspectorState.ReprojectionMode;
+                        reprojectionMode.intValue = (int)currentReprojectionMode;
+                        optimizeBufferDiscards.boolValue = inspectorState.OptimizeBufferDiscards;
                     }
-                    else if (aswDisabled)
+
+                    if (currentReprojectionMode == PxrReprojectionMode.PTW)
                     {
-                        GUI.enabled = false;
-                        serializedObject.FindProperty("enableAppSpaceWarp").boolValue = false;
-                        EditorGUILayout.PropertyField(serializedObject.FindProperty("enableAppSpaceWarp"), new GUIContent("Application SpaceWarp", "Unity Editor: 2021 LTS or later."));
+                        EditorGUILayout.HelpBox(
+                            PtwEnabledInfoMessage,
+                            MessageType.Info);
                     }
-                    else if (serializedObject.FindProperty("stereoRenderingModeAndroid").intValue == 0)
+
+                    EditorGUI.BeginDisabledGroup(
+                        inspectorState.DisableAppSpaceWarp);
+                    bool appSpaceWarpEnabled = currentReprojectionMode == PxrReprojectionMode.AppSW;
+                    bool requestedAppSpaceWarp = DrawReprojectionToggle(
+                        GuiApplicationSpaceWarp,
+                        appSpaceWarpEnabled);
+                    EditorGUI.EndDisabledGroup();
+                    if (requestedAppSpaceWarp != appSpaceWarpEnabled)
                     {
-                        GUI.enabled = false;
-                        serializedObject.FindProperty("enableAppSpaceWarp").boolValue = false;
-                        EditorGUILayout.PropertyField(serializedObject.FindProperty("enableAppSpaceWarp"), new GUIContent("Application SpaceWarp", "Set Stereo Rendering Mode to Multiview."));
+                        currentReprojectionMode = requestedAppSpaceWarp
+                            ? PxrReprojectionMode.AppSW
+                            : PxrReprojectionMode.None;
+                        reprojectionMode.intValue = (int)currentReprojectionMode;
+                        inspectorState = GetReprojectionInspectorState(
+                            usesVulkan,
+                            appSpaceWarpUnavailable,
+                            currentReprojectionMode,
+                            optimizeBufferDiscards.boolValue);
                     }
-                    else
+
+                    if (currentReprojectionMode == PxrReprojectionMode.AppSW &&
+                        appSpaceWarpUnavailable)
                     {
-                        EditorGUILayout.PropertyField(serializedObject.FindProperty("enableAppSpaceWarp"), new GUIContent("Application SpaceWarp"));
+                        string message = !supportsAppSpaceWarp
+                            ? "Application SpaceWarp requires Vulkan."
+                            : aswDisabled
+                                ? "Application SpaceWarp requires Unity 2021.1 or later."
+                                : "Application SpaceWarp requires Multiview.";
+                        EditorGUILayout.HelpBox(message, MessageType.Error);
                     }
-                    GUI.enabled = true;
+
+                    EditorGUI.BeginDisabledGroup(inspectorState.DisableOptimizeBufferDiscards);
+                    EditorGUILayout.PropertyField(optimizeBufferDiscards, guiOptimizeBuffer);
+                    EditorGUI.EndDisabledGroup();
+                    if (inspectorState.DisableOptimizeBufferDiscards && optimizeBufferDiscards.boolValue)
+                    {
+                        EditorGUILayout.HelpBox(
+                            "Positional TimeWarp requires Optimize Buffer Discards to be disabled.",
+                            MessageType.Warning);
+                    }
 
                     EditorGUILayout.PropertyField(systemSplashScreen, guiSystemSplashScreen);
                 }
@@ -173,17 +367,22 @@ namespace ByteDance.PICO.XR.Editor
                     guiContent.text = "Plane Detection";
                     projectConfig.planeDetection = EditorGUILayout.Toggle(guiContent, projectConfig.planeDetection);
 
+                    guiContent.text = "Image Tracking";
+                    projectConfig.imageTracking = EditorGUILayout.Toggle(guiContent, projectConfig.imageTracking);
+
 #if ENABLE_PICO_XR_SDK || ENABLE_PICO_OPENXR_SDK
-                    List<ARCameraManager> components = FindComponentsInScene<ARCameraManager>().Where(component => (component.enabled && component.gameObject.CompareTag("MainCamera"))).ToList();
+                    List<Component> components = FindComponentsInScene<Component>()
+                        .Where(component => IsEnabledARCameraManagerOnMainCamera(component))
+                        .ToList();
                     bool cameraEffect = false;
                     for (int i = 0; i < components.Count; i++)
                     {
-                        ARCameraManager aRCamera = components[i];
-                        if (aRCamera.gameObject.GetComponent<PXR_ARCameraEffectManager>())
+                        Component arCamera = components[i];
+                        if (arCamera.gameObject.GetComponent<PXR_ARCameraEffectManager>())
                         {
                             cameraEffect = true;
                         }
-                        Camera camera = aRCamera.gameObject.GetComponent<Camera>();
+                        Camera camera = arCamera.gameObject.GetComponent<Camera>();
                         if (camera)
                         {
                             camera.clearFlags = CameraClearFlags.SolidColor;
@@ -193,10 +392,10 @@ namespace ByteDance.PICO.XR.Editor
 
                     if (!cameraEffect && components.Count > 0)
                     {
-                        ARCameraManager aRCamera = components[0];
-                        if (!aRCamera.gameObject.GetComponent<PXR_ARCameraEffectManager>())
+                        Component arCamera = components[0];
+                        if (!arCamera.gameObject.GetComponent<PXR_ARCameraEffectManager>())
                         {
-                            aRCamera.gameObject.AddComponent<PXR_ARCameraEffectManager>();
+                            arCamera.gameObject.AddComponent<PXR_ARCameraEffectManager>();
                         }
                         cameraEffect = true;
                     }
@@ -306,7 +505,14 @@ namespace ByteDance.PICO.XR.Editor
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
         }
-
+        private static bool IsEnabledARCameraManagerOnMainCamera(Component component)
+        {
+            return component != null
+                && component.GetType().FullName == "UnityEngine.XR.ARFoundation.ARCameraManager"
+                && component is Behaviour behaviour
+                && behaviour.enabled
+                && component.gameObject.CompareTag("MainCamera");
+        }
         public static List<T> FindComponentsInScene<T>() where T : Component
         {
             var activeScene = SceneManager.GetActiveScene();

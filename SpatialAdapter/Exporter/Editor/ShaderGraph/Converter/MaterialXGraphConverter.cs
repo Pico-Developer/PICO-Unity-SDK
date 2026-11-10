@@ -1,4 +1,4 @@
-using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor.ShaderGraph;
@@ -32,20 +32,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 }
                 else
                 {
-                    string[] nodeDefinition = node.name.Split(".");
-                    bool hasValidDefinition = false;
-                    foreach (string definition in nodeDefinition)
+                    if (!HasValidDefinition(node))
                     {
-                        if (VALID_NODE_DEFINITION.Contains(definition))
-                        {
-                            hasValidDefinition = true;
-                            break;
-                        }
-                    }
-
-                    if (!hasValidDefinition)
-                    {
-                        Debug.LogError("No valid conversion for " + node.name);
                         return null;
                     }
                 }
@@ -56,6 +44,35 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             
             stagingEdges.ResolvePortConnections(graphData);
             return graphData;
+        }
+
+        internal static IReadOnlyList<string> GetUnsupportedNodes(GraphData shaderGraphData)
+        {
+            List<string> unsupportedNodes = new();
+
+            foreach (var node in shaderGraphData.GetNodes<AbstractMaterialNode>())
+            {
+                if (!ConverterLookup.NodeCanConvert(node) && !HasValidDefinition(node))
+                {
+                    unsupportedNodes.Add(node.name);
+                }
+            }
+
+            return unsupportedNodes;
+        }
+
+        private static bool HasValidDefinition(AbstractMaterialNode node)
+        {
+            string[] nodeDefinition = node.name.Split(".");
+            foreach (string definition in nodeDefinition)
+            {
+                if (VALID_NODE_DEFINITION.Contains(definition))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

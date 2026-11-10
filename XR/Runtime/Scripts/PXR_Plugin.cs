@@ -364,7 +364,11 @@ namespace ByteDance.PICO.XR
         /// <summary>
         /// Dynamic object tracking data provider.
         /// </summary>
-        DynamicObjectTracking
+        DynamicObjectTracking,
+        /// <summary>
+        /// Spatial image tracking data provider.
+        /// </summary>
+        SpatialImageTracking
     }
 
 
@@ -1351,6 +1355,8 @@ namespace ByteDance.PICO.XR
 		public ushort spatialMeshLod;
         public ushort enableEyeTracking;
         public ushort dynamicFoveation;
+        public ushort reprojectionMode;
+        public ushort usesReversedZBuffer;
     }
     
     public enum SuperResolutionOrSharpeningType
@@ -2325,7 +2331,7 @@ namespace ByteDance.PICO.XR
     
     public static class PXR_Plugin
     {
-        public const string PXR_SDK_Version = "6.1.1";
+        public const string PXR_SDK_Version = "6.2.0";
         public const string PXR_PLATFORM_DLL = "PxrPlatform";
         private static int PXR_API_Version = 0;
 
@@ -2341,6 +2347,8 @@ namespace ByteDance.PICO.XR
 
         [DllImport(PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Pxr_PollFutureEXT(ref XrFuturePollInfoEXT pollInfo, ref XrFuturePollResultEXT pollResult);
+        [DllImport(PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Pxr_CancelFutureEXT(ref XrFutureCancelInfoEXT cancelInfo);
         [DllImport(PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Pxr_PollFutureWithProgress(ref XrFuturePollInfoEXT pollInfo, ref XrFuturePollResultProgress pollResultProgress);
 
@@ -5388,6 +5396,69 @@ namespace ByteDance.PICO.XR
             public static ulong PlaneDetectionProviderHandle { get; set; }
             public static ulong LightEstimationProviderHandle { get; set; }
             public static ulong DynamicObjectTrackingProviderHandle { get; set; }
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+            private static readonly object s_ImageTrackingProviderGate =
+                new object();
+            private static ulong s_ImageTrackingProviderHandle;
+            private static long s_ImageTrackingProviderGeneration;
+
+            public static ulong ImageTrackingProviderHandle
+            {
+                get
+                {
+                    lock (s_ImageTrackingProviderGate)
+                    {
+                        return s_ImageTrackingProviderHandle;
+                    }
+                }
+                set
+                {
+                    lock (s_ImageTrackingProviderGate)
+                    {
+                        if (s_ImageTrackingProviderHandle == value)
+                        {
+                            return;
+                        }
+
+                        s_ImageTrackingProviderHandle = value;
+                        s_ImageTrackingProviderGeneration++;
+                    }
+                }
+            }
+
+            internal static long ImageTrackingProviderGeneration
+            {
+                get
+                {
+                    lock (s_ImageTrackingProviderGate)
+                    {
+                        return s_ImageTrackingProviderGeneration;
+                    }
+                }
+            }
+
+            internal static bool TryGetImageTrackingProviderGeneration(
+                ulong eventProviderHandle,
+                out long generation)
+            {
+                lock (s_ImageTrackingProviderGate)
+                {
+                    generation = s_ImageTrackingProviderGeneration;
+                    return eventProviderHandle != 0
+                           && eventProviderHandle
+                           == s_ImageTrackingProviderHandle;
+                }
+            }
+
+            internal static void InvalidateImageTrackingProviderHandle()
+            {
+                lock (s_ImageTrackingProviderGate)
+                {
+                    s_ImageTrackingProviderHandle = 0;
+                    s_ImageTrackingProviderGeneration++;
+                }
+            }
+#endif
             public static Dictionary<ulong, PxrSceneComponentData> SceneAnchorData = new Dictionary<ulong, PxrSceneComponentData>();
             public static Dictionary<Guid, PxrPlaneData> PlaneAnchorData = new Dictionary<Guid, PxrPlaneData>();
             public static Dictionary<Guid, ulong> planeAnchorLastData = new Dictionary<Guid, ulong>();
@@ -5424,7 +5495,9 @@ namespace ByteDance.PICO.XR
                     case PxrSemanticLabel.VirtualWall:
                         return PxrSpatialSceneDataTypeFlags.Wall;
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(label), label, null);
+                        // Forward compatibility: treat semantic labels added by newer
+                        // algorithm/runtime as Unknown instead of throwing.
+                        return PxrSpatialSceneDataTypeFlags.Unknown;
                 }
             }
 
@@ -5481,7 +5554,68 @@ namespace ByteDance.PICO.XR
                 SceneCaptureProviderHandle = providerHandle;
                 return pxrResult;
             }
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+            internal delegate PxrResult SpatialImageTrackingProviderCreateDelegate(
+                XrSpatialImageTrackingMode mode,
+                out ulong providerHandle);
 
+            internal delegate PxrResult SpatialImageTrackingProviderDestroyDelegate(
+                ulong providerHandle);
+
+            internal static PxrResult
+                UPxr_CreateSpatialImageTrackingSenseDataProvider(
+                    XrSpatialImageTrackingMode mode)
+            {
+                return UPxr_CreateSpatialImageTrackingSenseDataProvider(
+                    mode,
+                    PXR_SpatialImageTrackingPlugin.CreateProvider);
+            }
+
+            internal static PxrResult
+                UPxr_CreateSpatialImageTrackingSenseDataProvider(
+                    XrSpatialImageTrackingMode mode,
+                    SpatialImageTrackingProviderCreateDelegate createProvider)
+            {
+                if (ImageTrackingProviderHandle != 0)
+                {
+                    return PxrResult.SUCCESS;
+                }
+
+                PxrResult result = createProvider(mode, out ulong providerHandle);
+                if (result == PxrResult.SUCCESS)
+                {
+                    ImageTrackingProviderHandle = providerHandle;
+                }
+
+                return result;
+            }
+
+            internal static PxrResult
+                UPxr_DestroySpatialImageTrackingSenseDataProvider()
+            {
+                return UPxr_DestroySpatialImageTrackingSenseDataProvider(
+                    UPxr_DestroySenseDataProvider);
+            }
+
+            internal static PxrResult
+                UPxr_DestroySpatialImageTrackingSenseDataProvider(
+                    SpatialImageTrackingProviderDestroyDelegate destroyProvider)
+            {
+                ulong providerHandle = ImageTrackingProviderHandle;
+                if (providerHandle == 0)
+                {
+                    return PxrResult.SUCCESS;
+                }
+
+                PxrResult result = destroyProvider(providerHandle);
+                if (result == PxrResult.SUCCESS)
+                {
+                    ImageTrackingProviderHandle = 0;
+                }
+
+                return result;
+            }
+#endif
             public static PxrResult UPxr_CreateDynamicObjectTrackingSenseDataProvider(
                 PxrDynamicObjectType[] trackingTypes)
             {
@@ -5750,6 +5884,10 @@ namespace ByteDance.PICO.XR
                         return LightEstimationProviderHandle;
                     case PxrSenseDataProviderType.DynamicObjectTracking:
                         return DynamicObjectTrackingProviderHandle;
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+                    case PxrSenseDataProviderType.SpatialImageTracking:
+                        return ImageTrackingProviderHandle;
+#endif
                     default:
                         throw new ArgumentOutOfRangeException(nameof(type), type, null);
                 }
@@ -6071,12 +6209,7 @@ namespace ByteDance.PICO.XR
                     snapshotHandle = snapshotHandle
                 };
 
-                XrQueriedSenseData senseDataFirst = new XrQueriedSenseData()
-                {
-                    type = XrStructureType.XR_TYPE_QUERIED_SENSE_DATA_GET_INFO,
-                    queriedSpatialEntityCapacityInput = 0,
-                    queriedSpatialEntityCountOutput = 0,
-                };
+                XrQueriedSenseData senseDataFirst = CreateQueriedSenseData(0);
 #if UNITY_EDITOR||UNITY_STANDALONE
                 if (!pxrLoadstate)
                 {
@@ -6093,12 +6226,8 @@ namespace ByteDance.PICO.XR
 #endif
                 if (UPxr_ConvertIntToPxrResult(getResultFirst) == PxrResult.SUCCESS)
                 {
-                    XrQueriedSenseData senseDataSecond = new XrQueriedSenseData()
-                    {
-                        type = XrStructureType.XR_TYPE_QUERIED_SENSE_DATA_GET_INFO,
-                        queriedSpatialEntityCapacityInput = senseDataFirst.queriedSpatialEntityCountOutput,
-                        queriedSpatialEntityCountOutput = senseDataFirst.queriedSpatialEntityCountOutput,
-                    };
+                    XrQueriedSenseData senseDataSecond = CreateQueriedSenseData(
+                        senseDataFirst.queriedSpatialEntityCountOutput);
                     int resultSize = Marshal.SizeOf<PxrQueriedSpatialEntityInfo>();
                     int bytesSize = (int)senseDataFirst.queriedSpatialEntityCountOutput * resultSize;
                     senseDataSecond.queriedSpatialEntities = Marshal.AllocHGlobal(bytesSize);
@@ -6126,6 +6255,18 @@ namespace ByteDance.PICO.XR
                     entityinfos = new List<PxrQueriedSpatialEntityInfo>();
                     return UPxr_ConvertIntToPxrResult(getResultFirst);
                 }
+            }
+
+            internal static XrQueriedSenseData CreateQueriedSenseData(
+                uint capacityInput)
+            {
+                return new XrQueriedSenseData
+                {
+                    type = XrStructureType.XR_TYPE_QUERIED_SENSE_DATA,
+                    queriedSpatialEntityCapacityInput = capacityInput,
+                    queriedSpatialEntityCountOutput = 0,
+                    queriedSpatialEntities = IntPtr.Zero
+                };
             }
 
             public static PxrResult UPxr_EnumerateSpatialEntityComponentTypes(ulong snapshotHandle, ulong spatialEntityHandle, out PxrSceneComponentType[] types)
@@ -6708,6 +6849,27 @@ namespace ByteDance.PICO.XR
                 return UPxr_ConvertIntToPxrResult(pxrResult);
 #else
                 futureState = new PxrFutureState();
+                return PxrResult.Unknown;
+#endif
+            }
+
+            public static PxrResult UPxr_CancelFuture(ulong future)
+            {
+#if UNITY_EDITOR||UNITY_STANDALONE
+                if (!pxrLoadstate)
+                {
+                    return PxrResult.Unknown;
+                }
+#endif
+#if (UNITY_ANDROID && !UNITY_EDITOR) || PICO_LIVE_PREVIEW
+                XrFutureCancelInfoEXT cancelInfo = new XrFutureCancelInfoEXT()
+                {
+                    type = XrStructureType.XR_TYPE_FUTURE_CANCEL_INFO_EXT,
+                    future = future,
+                };
+                var pxrResult = Pxr_CancelFutureEXT(ref cancelInfo);
+                return UPxr_ConvertIntToPxrResult(pxrResult);
+#else
                 return PxrResult.Unknown;
 #endif
             }
@@ -7303,3 +7465,4 @@ namespace ByteDance.PICO.XR
         }
     }
 }
+

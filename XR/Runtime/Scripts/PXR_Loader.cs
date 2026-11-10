@@ -91,6 +91,19 @@ namespace ByteDance.PICO.XR
         private static List<XRAnchorSubsystemDescriptor> anchorSubsystemDescriptors = new List<XRAnchorSubsystemDescriptor>();
         private static List<XRPlaneSubsystemDescriptor> planeSubsystemDescriptors = new List<XRPlaneSubsystemDescriptor>();
 #endif
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+        private static List<XRImageTrackingSubsystemDescriptor> imageTrackingSubsystemDescriptors = new List<XRImageTrackingSubsystemDescriptor>();
+
+        internal ISpatialImageTrackingSessionLifecycle
+            imageTrackingSessionLifecycle { get; set; }
+
+        internal IImageTrackingSubsystemLifecycle
+            imageTrackingSubsystemLifecycle { get; set; }
+
+        private static long s_ImageTrackingSessionGeneration;
+        private ulong m_ImageTrackingSessionToken;
+        private bool m_OwnsImageTrackingSession;
+#endif
 
         public delegate Quaternion ConvertRotationWith2VectorDelegate(Vector3 from, Vector3 to);
 
@@ -142,13 +155,123 @@ namespace ByteDance.PICO.XR
             LoaderState.StartAttempted,
             LoaderState.Started
         };
+
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+        internal bool InitializeImageTracking()
+        {
+            m_ImageTrackingSessionToken =
+                unchecked((ulong)System.Threading.Interlocked.Increment(
+                    ref s_ImageTrackingSessionGeneration));
+            if (m_ImageTrackingSessionToken == 0)
+            {
+                m_ImageTrackingSessionToken =
+                    unchecked((ulong)System.Threading.Interlocked.Increment(
+                        ref s_ImageTrackingSessionGeneration));
+            }
+
+            m_OwnsImageTrackingSession =
+                ImageTrackingSessionLifecycle.Acquire(
+                SpatialImageTrackingSessionOwner.LegacyLoader,
+                m_ImageTrackingSessionToken);
+            if (!m_OwnsImageTrackingSession)
+            {
+                Debug.LogError(
+                    $"{TAG} Failed to acquire the image tracking session.");
+                m_ImageTrackingSessionToken = 0;
+                return false;
+            }
+
+            ImageTrackingSubsystemLifecycle.Create();
+            return true;
+        }
+
+        internal void StartImageTracking()
+        {
+            if (m_OwnsImageTrackingSession)
+            {
+                ImageTrackingSubsystemLifecycle.Start();
+            }
+        }
+
+        internal void StopImageTracking()
+        {
+            if (m_OwnsImageTrackingSession)
+            {
+                ImageTrackingSubsystemLifecycle.Stop();
+            }
+        }
+
+        internal bool DeinitializeImageTracking()
+        {
+            if (!m_OwnsImageTrackingSession)
+            {
+                return true;
+            }
+
+            ImageTrackingSubsystemLifecycle.Destroy();
+            PxrResult result = ImageTrackingSessionLifecycle.Release(
+                SpatialImageTrackingSessionOwner.LegacyLoader,
+                m_ImageTrackingSessionToken,
+                forceSessionTeardown: true);
+            m_OwnsImageTrackingSession = false;
+            m_ImageTrackingSessionToken = 0;
+            if (result != PxrResult.SUCCESS)
+            {
+                Debug.LogError(
+                    $"{TAG} Failed to release the image tracking session: "
+                    + result);
+                return false;
+            }
+
+            return true;
+        }
+
+        private ISpatialImageTrackingSessionLifecycle
+            ImageTrackingSessionLifecycle
+        {
+            get
+            {
+                if (imageTrackingSessionLifecycle == null)
+                {
+                    imageTrackingSessionLifecycle =
+                        SpatialImageTrackingSessionLifecycle.Shared;
+                }
+
+                return imageTrackingSessionLifecycle;
+            }
+        }
+
+        private IImageTrackingSubsystemLifecycle
+            ImageTrackingSubsystemLifecycle
+        {
+            get
+            {
+                if (imageTrackingSubsystemLifecycle == null)
+                {
+                    imageTrackingSubsystemLifecycle =
+                        new ImageTrackingSubsystemLifecycle(
+                            () => CreateSubsystem<
+                                XRImageTrackingSubsystemDescriptor,
+                                XRImageTrackingSubsystem>(
+                                imageTrackingSubsystemDescriptors,
+                                PXR_ImageTrackingSubsystem.k_SubsystemId),
+                            () => StartSubsystem<XRImageTrackingSubsystem>(),
+                            () => StopSubsystem<XRImageTrackingSubsystem>(),
+                            () => DestroySubsystem<XRImageTrackingSubsystem>());
+                }
+
+                return imageTrackingSubsystemLifecycle;
+            }
+        }
+#endif
+
         public override bool Initialize()
         {
             Debug.Log($"{TAG} Initialize() currentLoaderState={currentLoaderState}");
 #if UNITY_INPUT_SYSTEM
             InputLayoutLoader.RegisterInputLayouts();
 #endif
-#if PICO_MS_SDK
+#if PICO_MS_SDK && !(UNITY_EDITOR || UNITY_STANDALONE)
             SpatialNativeApi.UPxr_Init();
             if (inputSubsystem == null)
             {
@@ -180,8 +303,8 @@ namespace ByteDance.PICO.XR
             return true;
 #else
 
-// #if UNITY_ANDROID 
-       
+// #if UNITY_ANDROID
+
             PXR_Settings settings = GetSettings();
             if (settings != null)
             {
@@ -191,8 +314,8 @@ namespace ByteDance.PICO.XR
                     colorSpace = (ushort)((QualitySettings.activeColorSpace == ColorSpace.Linear) ? 1 : 0),
                     useContentProtect = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().useContentProtect),
                     systemDisplayFrequency = settings.GetSystemDisplayFrequency(),
-                    optimizeBufferDiscards = settings.GetOptimizeBufferDiscards(),
-                    enableAppSpaceWarp = Convert.ToUInt16(settings.enableAppSpaceWarp),
+                    optimizeBufferDiscards = settings.GetEffectiveOptimizeBufferDiscards(),
+                    enableAppSpaceWarp = Convert.ToUInt16(settings.reprojectionMode == PxrReprojectionMode.AppSW),
                     enableSubsampled = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().enableSubsampled),
                     lateLatchingDebug = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().latelatchingDebug),
                     enableStageMode = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().stageMode),
@@ -210,10 +333,13 @@ namespace ByteDance.PICO.XR
 #endif
                     spatialMeshLod = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().meshLod),
                     enableEyeTracking = Convert.ToUInt16(PXR_ProjectSetting.GetProjectConfig().eyeTracking),
-                    dynamicFoveation =1,
+                    dynamicFoveation = 1,
+                    reprojectionMode = (ushort)settings.reprojectionMode,
+                    usesReversedZBuffer = Convert.ToUInt16(SystemInfo.usesReversedZBuffer),
                 };
-                
+#if !(UNITY_EDITOR || UNITY_STANDALONE)
                 PXR_Plugin.System.UPxr_SetUserDefinedSettings(userDefinedSettings);
+#endif
             }
 #if ENABLE_PICO_XR_SDK || ENABLE_PICO_OPENXR_SDK
             PXR_Plugin.System.UPxr_SetXrEventDataBufferCallBack(XrEventDataBufferFunction);
@@ -270,6 +396,9 @@ namespace ByteDance.PICO.XR
                 {
                     CreateSubsystem<XRPlaneSubsystemDescriptor, XRPlaneSubsystem>(planeSubsystemDescriptors, PXR_PlaneSubsystem.k_SubsystemId);
                 }
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+                InitializeImageTracking();
+#endif
             }
 #endif
 #endif
@@ -431,6 +560,13 @@ namespace ByteDance.PICO.XR
                 {
                     StartSubsystem<XRFaceSubsystem>();
                 }
+
+                // Do not start XRImageTrackingSubsystem here.
+                // The AR image tracking manager sets the reference image library immediately before startup
+                // immediately before it starts XRImageTrackingSubsystem. Starting image
+                // tracking from the loader happens earlier than that manager and
+                // can throw "Cannot start image tracking without an image library".
+                // StartImageTracking();
             }
 
             if (PXR_ProjectSetting.GetProjectConfig().spatialAnchor)
@@ -455,6 +591,9 @@ namespace ByteDance.PICO.XR
                 StartSubsystem<XRInputSubsystem>();
             }
             currentLoaderState = LoaderState.Started;
+#if UNITY_6000_0_OR_NEWER && ENABLE_PICO_XR_SDK
+            PXR_SrpFoveationRendering.TryReapplyLastRequestedState();
+#endif
 #if ENABLE_PICO_XR_SDK
             ApplyKeyboardPassthroughPreferenceIfNeeded(true);
 #endif
@@ -545,6 +684,10 @@ namespace ByteDance.PICO.XR
                 {
                     StopSubsystem<XRFaceSubsystem>();
                 }
+
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+                StopImageTracking();
+#endif
             }
 
             if (PXR_ProjectSetting.GetProjectConfig().spatialAnchor)
@@ -661,6 +804,7 @@ namespace ByteDance.PICO.XR
 #if XR_HANDS
             DestroySubsystem<XRHandSubsystem>();
 #endif
+            bool imageTrackingDeinitialized = true;
 #if AR_FOUNDATION_5 || AR_FOUNDATION_6
             if (PXR_ProjectSetting.GetProjectConfig().arFoundation)
             {
@@ -674,13 +818,21 @@ namespace ByteDance.PICO.XR
                 {
                     DestroySubsystem<XRFaceSubsystem>();
                 }
+
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+                imageTrackingDeinitialized = DeinitializeImageTracking();
+#endif
             }
 #endif
 
 
             currentLoaderState = LoaderState.Uninitialized;
             Debug.Log($"{TAG} Deinitialize() end currentLoaderState={currentLoaderState}");
+#if AR_FOUNDATION_5 || AR_FOUNDATION_6
+            return imageTrackingDeinitialized;
+#else
             return true;
+#endif
 #endif
         }
 #if ENABLE_PICO_XR_SDK || ENABLE_PICO_OPENXR_SDK

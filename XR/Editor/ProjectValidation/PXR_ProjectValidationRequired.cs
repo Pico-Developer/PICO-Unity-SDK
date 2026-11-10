@@ -22,15 +22,16 @@ using ByteDance.PICO.OpenXR;
 using UnityEngine.Rendering.Universal;
 #endif
 
-#if AR_FOUNDATION_5 || AR_FOUNDATION_6
-using UnityEngine.XR.ARFoundation;
-#endif
 
 namespace ByteDance.PICO.XR.Editor
 {
     static class PXR_ProjectValidationRequired
     {
         const string k_Catergory = "PICO Required";
+        const string k_ImageTrackingUnsupportedArFoundationMessage =
+            "PICO Spatial Image Tracking requires AR Foundation 6.5.0 or newer.";
+        const string k_ImageTrackingUnsupportedArFoundationFixItMessage =
+            "Upgrade com.unity.xr.arfoundation to 6.5.0 or newer in Package Manager, or disable Image Tracking in PICO settings.";
 
         [InitializeOnLoadMethod]
         static void AddRequiredRules()
@@ -46,6 +47,27 @@ namespace ByteDance.PICO.XR.Editor
             var androidGlobalRules = new[]
             {
 #region Cross-Platform Validation (PXR & OpenXR)
+#if AR_FOUNDATION_6 && !AR_FOUNDATION_6_IMAGE_TRACKING
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = k_ImageTrackingUnsupportedArFoundationMessage,
+                    IsRuleEnabled = ()=>
+                    {
+                        return PXR_Utils.IsPXRValidationEnabled() || PXR_Utils.IsOpenXRValidationEnabled();
+                    },
+                    CheckPredicate = () =>
+                    {
+                        return !PXR_ProjectSetting.GetProjectConfig().imageTracking;
+                    },
+                    FixItMessage = k_ImageTrackingUnsupportedArFoundationFixItMessage,
+                    FixIt = () =>
+                    {
+                        Application.OpenURL("https://docs.unity3d.com/Packages/com.unity.xr.arfoundation@6.5/");
+                    },
+                    Error = true
+                },
+#endif
                 new BuildValidationRule
                 {
                     Category = k_Catergory,
@@ -205,13 +227,10 @@ namespace ByteDance.PICO.XR.Editor
                     CheckPredicate = () =>
                     {   
 #if AR_FOUNDATION_5 || AR_FOUNDATION_6
-                        if (PXR_ProjectSetting.GetProjectConfig().arFoundation)
+                        if (PXR_ProjectSetting.GetProjectConfig().arFoundation
+                            && FindEnabledARCameraManagersOnMainCamera().Count > 0)
                         {
-                            List<ARCameraManager> components = FindComponentsInScene<ARCameraManager>().Where(component => (component.enabled && component.gameObject.CompareTag("MainCamera"))).ToList();
-                            if (components.Count > 0)
-                            {
-                                return true;
-                            }
+                            return true;
                         }
 #endif
                         return FindComponentsInScene<PXR_Manager>().Where(component => component.isActiveAndEnabled).ToList().Count >= 1;
@@ -353,6 +372,104 @@ namespace ByteDance.PICO.XR.Editor
                     },
                     Error = true
                 },
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = "Reprojection Mode must be None, PTW, or AppSW.",
+                    IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
+                    CheckPredicate = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        return settings == null ||
+                               System.Enum.IsDefined(typeof(PxrReprojectionMode), settings.reprojectionMode);
+                    },
+                    FixItMessage = "Open Project Settings > Player Settings > PICO > disable reprojection.",
+                    FixIt = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        if (settings != null)
+                        {
+                            settings.reprojectionMode = PxrReprojectionMode.None;
+                        }
+                    },
+                    Error = true
+                },
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = "Application SpaceWarp requires Vulkan.",
+                    IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
+                    CheckPredicate = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        if (settings == null || settings.reprojectionMode != PxrReprojectionMode.AppSW)
+                        {
+                            return true;
+                        }
+
+                        GraphicsDeviceType[] graphicsApis =
+                            PlayerSettings.GetGraphicsAPIs(BuildTarget.Android);
+                        return PXR_Settings.IsAppSpaceWarpGraphicsApiSupported(graphicsApis);
+                    },
+                    FixItMessage = "Open Project Settings > Player Settings > Player > Other Settings > set Graphics API to Vulkan.",
+                    FixIt = () =>
+                    {
+                        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
+                        PlayerSettings.SetGraphicsAPIs(
+                            BuildTarget.Android,
+                            new[] { GraphicsDeviceType.Vulkan });
+                    },
+                    Error = true
+                },
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = "Application SpaceWarp requires Multiview.",
+                    IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
+                    CheckPredicate = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        return settings == null ||
+                               settings.reprojectionMode != PxrReprojectionMode.AppSW ||
+                               settings.stereoRenderingModeAndroid ==
+                               PXR_Settings.StereoRenderingModeAndroid.Multiview;
+                    },
+                    FixItMessage = "Open Project Settings > Player Settings > PICO > Stereo Rendering Mode: Multiview.",
+                    FixIt = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        if (settings != null)
+                        {
+                            settings.stereoRenderingModeAndroid =
+                                PXR_Settings.StereoRenderingModeAndroid.Multiview;
+                        }
+                    },
+                    Error = true
+                },
+#if !UNITY_2021_1_OR_NEWER
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = "Application SpaceWarp requires Unity 2021.1 or later.",
+                    IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
+                    CheckPredicate = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        return settings == null ||
+                               settings.reprojectionMode != PxrReprojectionMode.AppSW;
+                    },
+                    FixItMessage = "Disable Application SpaceWarp or upgrade Unity.",
+                    FixIt = () =>
+                    {
+                        PXR_Settings settings = PXR_Settings.GetSettings();
+                        if (settings != null)
+                        {
+                            settings.reprojectionMode = PxrReprojectionMode.None;
+                        }
+                    },
+                    Error = true
+                },
+#endif
 #if URP
 #if UNITY_2021_3_OR_NEWER || UNITY_2022_3_OR_NEWER
             new BuildValidationRule
@@ -854,8 +971,16 @@ namespace ByteDance.PICO.XR.Editor
             };
             BuildValidator.AddRules(BuildTargetGroup.Android, androidGlobalRules);
         }
-
-
+        private static List<Component> FindEnabledARCameraManagersOnMainCamera()
+        {
+            return FindComponentsInScene<Component>()
+                .Where(component => component != null
+                    && component.GetType().FullName == "UnityEngine.XR.ARFoundation.ARCameraManager"
+                    && component is Behaviour behaviour
+                    && behaviour.enabled
+                    && component.gameObject.CompareTag("MainCamera"))
+                .ToList();
+        }
         public static List<T> FindComponentsInScene<T>() where T : Component
         {
             var activeScene = SceneManager.GetActiveScene();
@@ -879,7 +1004,53 @@ namespace ByteDance.PICO.XR.Editor
         static string tip = "You can perform a one-click fix through Project Validation. Path: Project Settings/XR Plug-in Management/Project Validation";
         public static IEnumerable<ValidationIssue> GetValidationIssues()
         {
-            if (PlayerSettings.Android.minSdkVersion < PXR_Utils.minSdkVersionInEditor)
+            foreach (ValidationIssue issue in GetBuildValidationIssues(
+                         PXR_Settings.GetSettings(),
+                         PXR_Utils.IsPXRValidationEnabled(),
+                         PlayerSettings.GetGraphicsAPIs(BuildTarget.Android),
+                         PlayerSettings.Android.targetArchitectures,
+                         PlayerSettings.GetScriptingBackend(PXR_Utils.recommendedBuildTarget),
+                         PlayerSettings.Android.minSdkVersion,
+#if UNITY_2023_1_OR_NEWER
+                         PlayerSettings.Android.applicationEntry == AndroidApplicationEntry.Activity,
+#else
+                         true,
+#endif
+#if AR_FOUNDATION_6 && !AR_FOUNDATION_6_IMAGE_TRACKING
+                         PXR_ProjectSetting.GetProjectConfig().imageTracking,
+#else
+                         false,
+#endif
+                         false))
+            {
+                yield return issue;
+            }
+        }
+
+        internal static IEnumerable<ValidationIssue> GetBuildValidationIssues(
+            PXR_Settings settings,
+            bool pxrValidationEnabled,
+            GraphicsDeviceType[] graphicsApis,
+            AndroidArchitecture targetArchitectures,
+            ScriptingImplementation scriptingBackend,
+            AndroidSdkVersions minSdkVersion,
+            bool useActivity,
+            bool unsupportedImageTrackingEnabled,
+            bool forceLegacyUnityAppSpaceWarpUnsupported)
+        {
+#if AR_FOUNDATION_6 && !AR_FOUNDATION_6_IMAGE_TRACKING
+            if (unsupportedImageTrackingEnabled)
+            {
+                yield return new ValidationIssue
+                {
+                    error = true,
+                    description =
+                        $"{k_ImageTrackingUnsupportedArFoundationMessage}\n {k_ImageTrackingUnsupportedArFoundationFixItMessage}"
+                };
+            }
+#endif
+
+            if (minSdkVersion < PXR_Utils.minSdkVersionInEditor)
             {
                 yield return new ValidationIssue
                 {
@@ -889,7 +1060,7 @@ namespace ByteDance.PICO.XR.Editor
             }
 
 #if UNITY_2023_1_OR_NEWER
-            if (PlayerSettings.Android.applicationEntry != AndroidApplicationEntry.Activity)
+            if (!useActivity)
             {
                 yield return new ValidationIssue
                 {
@@ -899,12 +1070,63 @@ namespace ByteDance.PICO.XR.Editor
             }
 #endif
 
-            if ((PlayerSettings.Android.targetArchitectures & AndroidArchitecture.ARM64) == AndroidArchitecture.None || PlayerSettings.GetScriptingBackend(PXR_Utils.recommendedBuildTarget) != ScriptingImplementation.IL2CPP)
+            if ((targetArchitectures & AndroidArchitecture.ARM64) == AndroidArchitecture.None ||
+                scriptingBackend != ScriptingImplementation.IL2CPP)
             {
                 yield return new ValidationIssue
                 {
                     error = true,
                     description = $"ARM64 architecture and IL2CPP scripting backend are required!\n {tip}"
+                };
+            }
+
+            if (!pxrValidationEnabled || settings == null)
+            {
+                yield break;
+            }
+
+            if (!System.Enum.IsDefined(typeof(PxrReprojectionMode), settings.reprojectionMode))
+            {
+                yield return new ValidationIssue
+                {
+                    error = true,
+                    description = $"Reprojection Mode must be None, PTW, or AppSW.\n {tip}"
+                };
+            }
+
+            if (settings.reprojectionMode != PxrReprojectionMode.AppSW)
+            {
+                yield break;
+            }
+
+            if (!PXR_Settings.IsAppSpaceWarpGraphicsApiSupported(graphicsApis))
+            {
+                yield return new ValidationIssue
+                {
+                    error = true,
+                    description = $"Application SpaceWarp requires Vulkan.\n {tip}"
+                };
+            }
+
+            if (settings.stereoRenderingModeAndroid !=
+                PXR_Settings.StereoRenderingModeAndroid.Multiview)
+            {
+                yield return new ValidationIssue
+                {
+                    error = true,
+                    description = $"Application SpaceWarp requires Multiview.\n {tip}"
+                };
+            }
+
+#if !UNITY_2021_1_OR_NEWER
+            forceLegacyUnityAppSpaceWarpUnsupported = true;
+#endif
+            if (forceLegacyUnityAppSpaceWarpUnsupported)
+            {
+                yield return new ValidationIssue
+                {
+                    error = true,
+                    description = $"Application SpaceWarp requires Unity 2021.1 or later.\n {tip}"
                 };
             }
         }

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Android;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
@@ -41,6 +42,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 
             if (state == PlayModeStateChange.ExitingEditMode)
             {
+                ADBCommands.ExecuteCommand("kill-server");
+                ADBCommands.ExecuteCommand("start-server");
                 AssetExportManager.Initialize(true);
                 AssetExportManager.ExportAll(true);
                 AssetExportManager.OnBuildStarted(true);

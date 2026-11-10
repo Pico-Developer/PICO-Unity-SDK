@@ -6,7 +6,7 @@ namespace ByteDance.PICO.SecureMR
     public class PXR_SecureMRMicrophoneOperatorConfig : PXR_SecureMROperatorConfig
     {
         public int sampleRate = 16000;
-        public string pcmType = "PCM_INT16";
+        public string pcmType = "PCM_16BIT";
     }
 }
 #endif

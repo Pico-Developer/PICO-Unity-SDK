@@ -1,4 +1,4 @@
-﻿{
+{
     "name": "ByteDance.PICO.SpatialAdapter.Exporter.Editor",
     "rootNamespace": "",
     "references": [
@@ -21,7 +21,21 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
-    "versionDefines": [],
+    "defineConstraints": [
+        "PICO_SPATIAL_ADAPTER_HAS_USD",
+        "PICO_SPATIAL_ADAPTER_HAS_UNITYGLTF"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.formats.usd",
+            "expression": "3.0.0-exp.4",
+            "define": "PICO_SPATIAL_ADAPTER_HAS_USD"
+        },
+        {
+            "name": "com.plattar.unitygltf",
+            "expression": "1.142.0",
+            "define": "PICO_SPATIAL_ADAPTER_HAS_UNITYGLTF"
+        }
+    ],
     "noEngineReferences": false
 }

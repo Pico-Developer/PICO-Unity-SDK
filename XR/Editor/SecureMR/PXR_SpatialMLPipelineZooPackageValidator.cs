@@ -330,17 +330,33 @@ namespace ByteDance.PICO.SecureMR.Editor
             var outputDimensions = ReadIntegerArray(output, "dimensions");
             var inputChannels = GetInt(input, "channels", 1);
             var outputChannels = GetInt(output, "channels", 1);
-            if (inputDimensions.Count != 2)
-                throw new InvalidDataException(
-                    $"{context} input '{inputName}' must use two dimensions plus channels.");
+            if (!IsMatrixTensor(input) || !IsMatrixTensor(output) || IsGltfTensor(input) || IsGltfTensor(output))
+                throw new InvalidDataException($"{context} CHW/HWC input and output must use MAT tensors.");
+            var inputDataType = GetInt(input, "data_type", -1);
+            var outputDataType = GetInt(output, "data_type", -1);
+            if (inputDataType < 1 || inputDataType > 7 || inputDataType != outputDataType)
+                throw new InvalidDataException($"{context} CHW/HWC input and output must have the same supported data type.");
 
-            var expectedDimensions = inputChannels <= 4
-                ? new[] { inputChannels, inputDimensions[0] }
-                : new[] { inputDimensions[1], inputChannels };
-            var expectedChannels = inputChannels <= 4 ? inputDimensions[1] : inputDimensions[0];
+            int[] expectedDimensions;
+            int expectedChannels;
+            if (inputDimensions.Count == 2)
+            {
+                expectedDimensions = new[] { inputChannels, inputDimensions[0], inputDimensions[1] };
+                expectedChannels = 1;
+            }
+            else if (inputDimensions.Count == 3 && inputChannels == 1)
+            {
+                expectedDimensions = new[] { inputDimensions[1], inputDimensions[2] };
+                expectedChannels = inputDimensions[0];
+            }
+            else
+            {
+                throw new InvalidDataException(
+                    $"{context} CHW/HWC input must be [H,W] with C channels or [C,H,W] with one channel.");
+            }
             if (!outputDimensions.SequenceEqual(expectedDimensions) || outputChannels != expectedChannels)
                 throw new InvalidDataException(
-                    $"{context} output '{outputName}' has dimensions [{string.Join(", ", outputDimensions)}] and channels {outputChannels}; " +
+                    $"{context} CHW/HWC output '{outputName}' has dimensions [{string.Join(", ", outputDimensions)}] and channels {outputChannels}; " +
                     $"expected [{string.Join(", ", expectedDimensions)}] and channels {expectedChannels}.");
         }
 

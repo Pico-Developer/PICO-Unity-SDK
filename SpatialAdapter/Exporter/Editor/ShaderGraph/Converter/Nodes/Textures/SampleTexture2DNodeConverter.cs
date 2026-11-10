@@ -91,6 +91,11 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph {
             return true;
         }
 
+        private static Texture GetDefaultTexture(MaterialSlot slot)
+        {
+            return slot is Texture2DInputMaterialSlot textureInputSlot ? textureInputSlot.texture : null;
+        }
+
         private string GetFilterType(FilterMode filterMode)
         {
             switch (filterMode)
@@ -167,14 +172,25 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph {
 
             foreach (var slot in inputSlots)
             {
-                if (slot.RawDisplayName() == "Texture" && slot.isConnected)
+                if (slot.RawDisplayName() == "Texture")
                 {
-                    var textureOutputSlot = ShaderGraphUtil.SlotUtil.GetOutputSlot(slot);
-                    if (textureOutputSlot?.owner is Texture2DAssetNode textureAssetNode)
+                    Texture texture = null;
+                    if (slot.isConnected)
                     {
-                        wrapModeU = GetWrapType(textureAssetNode.texture.wrapModeU);
-                        wrapModeV = GetWrapType(textureAssetNode.texture.wrapModeV);
-                        filterTypeValue = GetFilterType(textureAssetNode.texture.filterMode);
+                        var textureOutputSlot = ShaderGraphUtil.SlotUtil.GetOutputSlot(slot);
+                        if (textureOutputSlot?.owner is Texture2DAssetNode textureAssetNode)
+                            texture = textureAssetNode.texture;
+                    }
+                    else
+                    {
+                        texture = GetDefaultTexture(slot);
+                    }
+
+                    if (texture != null)
+                    {
+                        wrapModeU = GetWrapType(texture.wrapModeU);
+                        wrapModeV = GetWrapType(texture.wrapModeV);
+                        filterTypeValue = GetFilterType(texture.filterMode);
                     }
                 }
                 else if (slot.RawDisplayName() == "Sampler" && slot.isConnected)
@@ -214,6 +230,13 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph {
 
                 if (TryAddDirectTextureFilePort(slot, graph, textureSampleNode))
                     continue;
+
+                if (slot.RawDisplayName() == "Texture" && !slot.isConnected)
+                {
+                    var defaultTexture = GetDefaultTexture(slot);
+                    if (defaultTexture != null)
+                        graph.RegisterTexture(defaultTexture);
+                }
 
                 MaterialXGraphUtil.AddInputPortAndEdge(stagingEdges, textureSampleNode, slot, portName, portType);
             }

@@ -32,7 +32,7 @@ namespace ByteDance.PICO.OpenXR
         CustomRuntimeLoaderBuildTargets = new[] { BuildTarget.Android },
         OpenxrExtensionStrings = OpenXrExtensionList,
 #if UNITY_OPENXR_1_16_0
-        CustomRuntimeLoaderName = "LoaderForUnitySDK_1_1_0",
+        CustomRuntimeLoaderName = "LoaderForUnitySDK",
 #endif
         FeatureId = featureId
     )]

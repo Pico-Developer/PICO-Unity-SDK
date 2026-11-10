@@ -1,4 +1,4 @@
-﻿﻿using System;
+﻿﻿﻿﻿using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
@@ -15,6 +15,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
     internal static class AssetExportManager
     {
         private static string k_ResourceDataPath = "Assets/Editor/SpatialAdapterResourceData.asset";
+        private const string k_SpatialEngineBundleFilename = "SpatialAssetBundle.bundle";
 
         private static ExportFormat exportFormat;
         private static bool exportShaderGraphs;
@@ -296,6 +297,14 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             else
             {
                 SpatialAdapterResourceData data = ScriptableObject.CreateInstance<SpatialAdapterResourceData>();
+                if (exportAssetBundle)
+                {
+                    data.SpatialEngineBundlePath = Path.Combine(
+                        Path.GetFileName(AssetExportHelpers.GetExportDirectory()),
+                        k_SpatialEngineBundleFilename
+                    );
+                }
+
                 data.PrefabLookUps = prefabExporter.PathLookUps;
                 data.MaterialLookUps = materialExporter.PathLookUps;
                 data.ShaderGraphLookUps = shaderGraphExporter.PathLookUps;
@@ -411,7 +420,6 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             bool bundleSuccess = BundleToolExportManager.ExportSpatialBundle(bundleToolInputRoot,
                 bundleToolOutputFile,
                 bundleExports);
-            
         }
         
         private static void DeleteExistingBundleFiles()

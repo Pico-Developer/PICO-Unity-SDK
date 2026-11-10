@@ -1,4 +1,4 @@
-﻿using UnityEditor.ShaderGraph;
+using UnityEditor.ShaderGraph;
 
 namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph.UV
 {
@@ -33,7 +33,6 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph.UV
                 MaterialXDataType.Vector2);
             graph.AddPortAndEdge(tilingNode.Name, offsetNode.Name, "in1", MaterialXDataType.Vector2);
 
-            // offset input
             offsetNode.AddPortWithValue("in2", MaterialXDataType.Vector2, ShaderGraphUtil.SlotUtil.GetSlotDefaultValue(offsetSlot));
             stagingEdges.AddShaderGraphEdgeAndPort(offsetSlot, offsetNode.Name, "in2");
 

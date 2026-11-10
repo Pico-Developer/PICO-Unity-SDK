@@ -209,8 +209,8 @@ namespace ByteDance.PICO.SecureMR
                 {
                     if (operatorConfig != null && operatorConfig is PXR_SecureMRRenderTextOperatorConfig opConfig)
                     {
-                        RenderTextOperatorConfiguration colorConvertOperatorConfig = new RenderTextOperatorConfiguration(opConfig.typeface, opConfig.languageAndLocale, opConfig.width, opConfig.height);
-                        Operator = pipeline.pipeline.CreateOperator<UpdateGltfOperator>(colorConvertOperatorConfig);
+                        RenderTextOperatorConfiguration textConfig = new RenderTextOperatorConfiguration(opConfig.typeface, opConfig.languageAndLocale, opConfig.width, opConfig.height);
+                        Operator = pipeline.pipeline.CreateOperator<RenderTextOperator>(textConfig);
                     }
                 }
                     break;

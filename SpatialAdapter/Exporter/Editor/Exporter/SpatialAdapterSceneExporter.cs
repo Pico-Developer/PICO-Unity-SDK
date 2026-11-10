@@ -10,6 +10,7 @@ using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityGLTF;
 
 namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 {
@@ -84,7 +85,6 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 
                 if (isAssetDirty)
                 {
-                    TemporaryTextMeshProExportScope.SetTextMeshProsTemporaryData(scene.GetRootGameObjects());
                     ExportScene(scene, exportedPath, settings);
                 }
                 
@@ -100,7 +100,6 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                         EditorSceneManager.SaveScene(scene);
                     }
                 }
-                TemporaryTextMeshProExportScope.RestoreTextMeshProsFromTemporaryData();
             }
 
             return true;
@@ -149,7 +148,9 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             runtime.disabledFeatures = runtimeSettings.m_disabledFeatures;
             runtime.exportFormat = settings.m_Format;
             runtime.disableUnlitTonemapping = runtimeSettings.m_disableUnlitTonemapping;
+            runtime.globalImageBasedLightingScale = runtimeSettings.m_globalImageBasedLightingScale;
             runtime.autoAddUIHoverEffect = runtimeSettings.m_autoAddUIHoverEffect;
+            runtime.enableDynamicLights = runtimeSettings.m_enableDynamicLights;
 
             runtime.resourceData = AssetExportManager.GetResourceData(false);
             runtime.sceneData = GetSceneData(scene, exportedPath);
@@ -185,7 +186,10 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                         // animation clips export based on settings
                         PlattarExporterOptions.ExportAnimationClips = settings.m_ExportAnimationClips;
                         GLTFTextureUtils.textureOption = settings.m_TextureExportOption;
-                        if (Plattar.Exporter.GenerateGLTF(exportRoots, Path.GetFileNameWithoutExtension(exportedPath), exportedPath, true) == null)
+
+                        object exportResult = Plattar.Exporter.GenerateGLTF(exportRoots, Path.GetFileNameWithoutExtension(exportedPath), exportedPath, true);
+
+                        if (exportResult == null)
                         {
                             throw new BuildFailedException($"Multi Spatial Exporter: Failed to convert {ExportFormat.GLB} in scene {scene.name}");
                         }

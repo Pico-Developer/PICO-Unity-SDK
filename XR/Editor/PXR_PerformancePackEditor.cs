@@ -425,9 +425,7 @@ namespace ByteDance.PICO.XR.Editor
 
         private static PXR_PerformancePackConfig CreateDefaultConfig()
         {
-            var cfg = ScriptableObject.CreateInstance<PXR_PerformancePackConfig>();
-            cfg.updatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            return cfg;
+            return ScriptableObject.CreateInstance<PXR_PerformancePackConfig>();
         }
 
         private static PXR_PerformancePackConfig LoadFromProjectAsset()
@@ -479,8 +477,6 @@ namespace ByteDance.PICO.XR.Editor
             target.projectSwan = CopyDeviceConfig(source.projectSwan);
             target.pico4Series = CopyDeviceConfig(source.pico4Series);
             target.otherDevice = CopyDeviceConfig(source.otherDevice);
-            target.presetName = source.presetName;
-            target.updatedAtUnixMs = source.updatedAtUnixMs;
         }
 
         private static PXR_PerformancePackDeviceConfig CopyDeviceConfig(PXR_PerformancePackDeviceConfig source)
@@ -507,7 +503,6 @@ namespace ByteDance.PICO.XR.Editor
 
         private static void SaveToProjectAsset()
         {
-            _config.updatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var asset = AssetDatabase.LoadAssetAtPath<PXR_PerformancePackConfig>(PerformancePackAssetPath);
             if (asset == null)
             {
@@ -798,6 +793,7 @@ namespace ByteDance.PICO.XR.Editor
 
             var container = new VisualElement();
             container.style.flexDirection = FlexDirection.Column;
+            container.style.flexGrow = 1;
             container.style.paddingLeft = 16;
             container.style.paddingRight = 16;
             container.style.paddingTop = 12;
@@ -823,42 +819,65 @@ namespace ByteDance.PICO.XR.Editor
             statusText.style.whiteSpace = WhiteSpace.Normal;
             titleRow.Add(statusText);
 
-            var toolbar = new VisualElement();
-            toolbar.style.flexDirection = FlexDirection.Row;
-            toolbar.style.alignItems = Align.Center;
-            toolbar.style.marginTop = 8;
-            toolbar.style.paddingLeft = 8;
-            toolbar.style.paddingRight = 8;
-            toolbar.style.paddingTop = 6;
-            toolbar.style.paddingBottom = 6;
-            toolbar.style.backgroundColor = new StyleColor(GetSurfaceColor());
-            toolbar.style.borderTopWidth = 1;
-            toolbar.style.borderBottomWidth = 1;
-            toolbar.style.borderLeftWidth = 1;
-            toolbar.style.borderRightWidth = 1;
-            toolbar.style.borderTopColor = new StyleColor(GetBorderColor());
-            toolbar.style.borderBottomColor = new StyleColor(GetBorderColor());
-            toolbar.style.borderLeftColor = new StyleColor(GetBorderColor());
-            toolbar.style.borderRightColor = new StyleColor(GetBorderColor());
-            toolbar.style.borderTopLeftRadius = 6;
-            toolbar.style.borderTopRightRadius = 6;
-            toolbar.style.borderBottomLeftRadius = 6;
-            toolbar.style.borderBottomRightRadius = 6;
-            container.Add(toolbar);
+            var navigationBar = new VisualElement();
+            navigationBar.style.flexDirection = FlexDirection.Row;
+            navigationBar.style.alignItems = Align.Center;
+            navigationBar.style.marginTop = 8;
+            navigationBar.style.paddingLeft = 8;
+            navigationBar.style.paddingRight = 8;
+            navigationBar.style.paddingTop = 6;
+            navigationBar.style.paddingBottom = 6;
+            navigationBar.style.backgroundColor = new StyleColor(GetSurfaceColor());
+            navigationBar.style.borderTopWidth = 1;
+            navigationBar.style.borderBottomWidth = 1;
+            navigationBar.style.borderLeftWidth = 1;
+            navigationBar.style.borderRightWidth = 1;
+            navigationBar.style.borderTopColor = new StyleColor(GetBorderColor());
+            navigationBar.style.borderBottomColor = new StyleColor(GetBorderColor());
+            navigationBar.style.borderLeftColor = new StyleColor(GetBorderColor());
+            navigationBar.style.borderRightColor = new StyleColor(GetBorderColor());
+            navigationBar.style.borderTopLeftRadius = 6;
+            navigationBar.style.borderTopRightRadius = 6;
+            navigationBar.style.borderBottomLeftRadius = 6;
+            navigationBar.style.borderBottomRightRadius = 6;
+            container.Add(navigationBar);
 
             var content = new VisualElement();
             content.style.flexGrow = 1;
             content.style.marginTop = 8;
             container.Add(content);
 
+            var actionBar = new VisualElement();
+            actionBar.style.flexDirection = FlexDirection.Row;
+            actionBar.style.alignItems = Align.Center;
+            actionBar.style.justifyContent = Justify.FlexEnd;
+            actionBar.style.marginTop = 8;
+            actionBar.style.paddingLeft = 8;
+            actionBar.style.paddingRight = 8;
+            actionBar.style.paddingTop = 6;
+            actionBar.style.paddingBottom = 6;
+            actionBar.style.backgroundColor = new StyleColor(GetSurfaceColor());
+            actionBar.style.borderTopWidth = 1;
+            actionBar.style.borderBottomWidth = 1;
+            actionBar.style.borderLeftWidth = 1;
+            actionBar.style.borderRightWidth = 1;
+            actionBar.style.borderTopColor = new StyleColor(GetBorderColor());
+            actionBar.style.borderBottomColor = new StyleColor(GetBorderColor());
+            actionBar.style.borderLeftColor = new StyleColor(GetBorderColor());
+            actionBar.style.borderRightColor = new StyleColor(GetBorderColor());
+            actionBar.style.borderTopLeftRadius = 6;
+            actionBar.style.borderTopRightRadius = 6;
+            actionBar.style.borderBottomLeftRadius = 6;
+            actionBar.style.borderBottomRightRadius = 6;
+            container.Add(actionBar);
+
             void RefreshStatusText()
             {
                 int count = 0;
                 foreach (var _ in GetSelectedProfiles()) count++;
                 string deviceText = count == 0 ? "No device selected" : $"{count} device(s) selected";
-                string presetText = string.IsNullOrEmpty(_config?.presetName) ? "Preset: Default" : $"Preset: {_config.presetName}";
                 string dirtyText = _isDirty ? "Status: Pending apply" : "Status: Saved";
-                statusText.text = deviceText + " · " + presetText + " · " + dirtyText;
+                statusText.text = deviceText + " · " + dirtyText;
             }
 
             _requestStatusRefresh = RefreshStatusText;
@@ -988,6 +1007,65 @@ namespace ByteDance.PICO.XR.Editor
                 });
             }
 
+            void ApplySecondaryActionButtonStyle(Button button)
+            {
+                Color border = GetBorderColor();
+                button.style.marginLeft = 6;
+                button.style.paddingLeft = 12;
+                button.style.paddingRight = 12;
+                button.style.paddingTop = 6;
+                button.style.paddingBottom = 6;
+                button.style.borderTopLeftRadius = 4;
+                button.style.borderTopRightRadius = 4;
+                button.style.borderBottomLeftRadius = 4;
+                button.style.borderBottomRightRadius = 4;
+                button.style.borderTopWidth = 1;
+                button.style.borderBottomWidth = 1;
+                button.style.borderLeftWidth = 1;
+                button.style.borderRightWidth = 1;
+                button.style.minWidth = 80;
+                button.style.backgroundColor = new StyleColor(Color.clear);
+                button.style.borderTopColor = new StyleColor(border);
+                button.style.borderBottomColor = new StyleColor(border);
+                button.style.borderLeftColor = new StyleColor(border);
+                button.style.borderRightColor = new StyleColor(border);
+                button.style.color = new StyleColor(GetTextSecondaryColor());
+                button.style.unityFontStyleAndWeight = FontStyle.Normal;
+            }
+
+            void ApplySecondaryActionButtonInteractions(Button button)
+            {
+                Color normal = Color.clear;
+                Color hover = EditorGUIUtility.isProSkin
+                    ? new Color(1f, 1f, 1f, 0.06f)
+                    : new Color(0f, 0f, 0f, 0.05f);
+                Color pressed = EditorGUIUtility.isProSkin
+                    ? new Color(1f, 1f, 1f, 0.11f)
+                    : new Color(0f, 0f, 0f, 0.10f);
+                bool isPressed = false;
+
+                button.RegisterCallback<MouseEnterEvent>(_ =>
+                {
+                    if (isPressed) return;
+                    button.style.backgroundColor = new StyleColor(hover);
+                });
+                button.RegisterCallback<MouseLeaveEvent>(_ =>
+                {
+                    isPressed = false;
+                    button.style.backgroundColor = new StyleColor(normal);
+                });
+                button.RegisterCallback<MouseDownEvent>(_ =>
+                {
+                    isPressed = true;
+                    button.style.backgroundColor = new StyleColor(pressed);
+                });
+                button.RegisterCallback<MouseUpEvent>(_ =>
+                {
+                    isPressed = false;
+                    button.style.backgroundColor = new StyleColor(hover);
+                });
+            }
+
             void SelectTab(Tab tab)
             {
                 SwitchTab(tab);
@@ -1002,7 +1080,7 @@ namespace ByteDance.PICO.XR.Editor
                 var button = new Button(() => SelectTab(tab)) { text = tab.ToString() };
                 ApplyTabButtonStyle(button, tab == _activeTab);
                 tabButtons[tab] = button;
-                toolbar.Add(button);
+                navigationBar.Add(button);
             }
 
             AddTabButton(Tab.Basic);
@@ -1010,10 +1088,6 @@ namespace ByteDance.PICO.XR.Editor
             AddTabButton(Tab.Device);
             AddTabButton(Tab.Preview);
             AddTabButton(Tab.Help);
-
-            var spacer = new VisualElement();
-            spacer.style.flexGrow = 1;
-            toolbar.Add(spacer);
 
             var applyButton = new Button(() =>
             {
@@ -1026,7 +1100,7 @@ namespace ByteDance.PICO.XR.Editor
             { text = "Apply" };
             ApplyActionButtonStyle(applyButton, TokenPrimary);
             ApplyActionButtonInteractions(applyButton, TokenPrimary);
-            toolbar.Add(applyButton);
+            actionBar.Add(applyButton);
 
             var resetButton = new Button(() =>
             {
@@ -1034,36 +1108,9 @@ namespace ByteDance.PICO.XR.Editor
                 RenderActiveTab();
             })
             { text = "Reset" };
-            ApplyActionButtonStyle(resetButton, TokenWarning);
-            ApplyActionButtonInteractions(resetButton, TokenWarning);
-            toolbar.Add(resetButton);
-
-            var savePresetButton = new Button(() =>
-            {
-                string path = EditorUtility.SaveFilePanel("Save Preset", string.Empty, "PICO_PerformancePack_Preset", "json");
-                if (string.IsNullOrEmpty(path)) return;
-                _config.presetName = Path.GetFileNameWithoutExtension(path);
-                _config.updatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                File.WriteAllText(path, JsonUtility.ToJson(_config, true));
-                MarkDirty();
-                RefreshStatusText();
-            })
-            { text = "Save preset" };
-            ApplyActionButtonStyle(savePresetButton, TokenSuccess);
-            ApplyActionButtonInteractions(savePresetButton, TokenSuccess);
-            toolbar.Add(savePresetButton);
-
-            var exportButton = new Button(() =>
-            {
-                string path = EditorUtility.SaveFilePanel("Export Config", string.Empty, "PICO_PerformancePack_Config", "json");
-                if (string.IsNullOrEmpty(path)) return;
-                _config.updatedAtUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                File.WriteAllText(path, JsonUtility.ToJson(_config, true));
-            })
-            { text = "Export" };
-            ApplyActionButtonStyle(exportButton, TokenInfo);
-            ApplyActionButtonInteractions(exportButton, TokenInfo);
-            toolbar.Add(exportButton);
+            ApplySecondaryActionButtonStyle(resetButton);
+            ApplySecondaryActionButtonInteractions(resetButton);
+            actionBar.Add(resetButton);
 
             root.RegisterCallback<GeometryChangedEvent>(evt =>
             {
@@ -1710,7 +1757,7 @@ namespace ByteDance.PICO.XR.Editor
                 "Perf warning: recommended for some devices but not all\n" +
                 "Unsupported: at least one selected device does not support the value\n" +
                 "Custom: differs from all selected devices' recommendations\n\n" +
-                "Flow: Select devices → Review recommendations → Customize → Preview → Save/Export"
+                "Flow: Select devices → Review recommendations → Customize → Preview → Apply"
             );
             content.style.whiteSpace = WhiteSpace.Normal;
             content.style.marginTop = 8;

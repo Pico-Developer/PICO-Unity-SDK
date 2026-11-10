@@ -1,7 +1,7 @@
 {
 	"name": "com.bytedance.pico.spatialadapter",
 	"displayName": "PICO SpatialAdapter",
-	"version": "6.1.0",
+	"version": "6.2.0",
 	"unity": "2022.3",
 	"description": "Pico Spatial Adapter Runtime Library",
 	"author": {
@@ -10,8 +10,6 @@
 	"keywords": [],
 	"samples": [],
 	"dependencies": {
-		"com.unity.formats.usd": "3.0.0-exp.4",
-		"com.plattar.unitygltf": "1.142.0",
 		"com.unity.inputsystem": "1.7.0",
 		"com.unity.shadergraph": "14.0.0",
         "com.unity.xr.core-utils": "2.5.1",

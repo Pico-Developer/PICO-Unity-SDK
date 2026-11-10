@@ -780,25 +780,28 @@ namespace ByteDance.PICO.Enterprise
                 int num = 0;
                 num = tobHelper.Call<int>("pbsPropertyGetScreenOffDelay", ext);
                 switch (num) {
-                    case 0:
-                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.THREE;
-                        break;
-                    case 1:
-                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.TEN;
-                        break;
-                    case 2:
-                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.THIRTY;
+                    case -2:
+                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.DEFAULT;
                         break;
                     case 3:
+                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.THREE;
+                        break;
+                    case 10:
+                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.TEN;
+                        break;
+                    case 30:
+                        screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.THIRTY;
+                        break;
+                    case 60:
                         screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.SIXTY;
                         break;
-                    case 4:
+                    case 300:
                         screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.THREE_HUNDRED;
                         break;
-                    case 5:
+                    case 600:
                         screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.SIX_HUNDRED;
                         break;
-                    case 6:
+                    case -1:
                         screenOffDelayTimeEnum = ScreenOffDelayTimeEnum.NEVER;
                         break;
                 }
@@ -814,25 +817,28 @@ namespace ByteDance.PICO.Enterprise
                 num = tobHelper.Call<int>("pbsPropertyGetSleepDelay", ext);
                 switch (num)
                 {
-                    case 0:
+                    case -2:
+                        sleepDelayTime = SleepDelayTimeEnum.DEFAULT;
+                        break;
+                    case 15:
                         sleepDelayTime = SleepDelayTimeEnum.FIFTEEN;
                         break;
-                    case 1:
+                    case 30:
                         sleepDelayTime = SleepDelayTimeEnum.THIRTY;
                         break;
-                    case 2:
+                    case 60:
                         sleepDelayTime = SleepDelayTimeEnum.SIXTY;
                         break;
-                    case 3:
+                    case 300:
                         sleepDelayTime = SleepDelayTimeEnum.THREE_HUNDRED;
                         break;
-                    case 4:
+                    case 600:
                         sleepDelayTime = SleepDelayTimeEnum.SIX_HUNDRED;
                         break;
-                    case 5:
+                    case 1800:
                         sleepDelayTime = SleepDelayTimeEnum.ONE_THOUSAND_AND_EIGHT_HUNDRED;
                         break;
-                    case 6:
+                    case -1:
                         sleepDelayTime = SleepDelayTimeEnum.NEVER;
                         break;
                 }

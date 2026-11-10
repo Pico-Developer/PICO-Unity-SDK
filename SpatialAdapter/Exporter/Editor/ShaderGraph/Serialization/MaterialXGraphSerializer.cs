@@ -205,7 +205,24 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 
         private MaterialXPortData GetOverrideInputPort(MaterialXNodeData input)
         {
-            object newValue = input.GetPort("value").ByteValue; 
+            if (input.DataType == MaterialXDataType.Filename || input.DataType == MaterialXDataType.String)
+            {
+                string newStringValue = input.GetPort("value").StringValue;
+
+                if (overrideMaterial.HasProperty(input.Name) && input.DataType == MaterialXDataType.Filename)
+                {
+                    var texture = overrideMaterial.GetTexture(input.Name);
+                    if (texture != null)
+                    {
+                        _graph.RegisterTexture(texture);
+                        newStringValue = ConverterUtil.GetExportedTextureReferencePath(_graph.FilePath, texture) ?? newStringValue;
+                    }
+                }
+
+                return new MaterialXPortData(input.Name, input.DataType, newStringValue);
+            }
+
+            object newValue = input.GetPort("value").ByteValue;
             if (overrideMaterial.HasProperty(input.Name))
             {
                 var shaderType = MaterialXDataTypeExtensions.ToUnityShaderPropertyType(input.DataType);
@@ -239,15 +256,6 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                     case ShaderUtil.ShaderPropertyType.Int:
                         newValue = new[] { (float)overrideMaterial.GetInt(input.Name) };
                         break;
-                    case ShaderUtil.ShaderPropertyType.TexEnv:
-                    {
-                        var texture = overrideMaterial.GetTexture(input.Name);
-                        if (texture != null)
-                        {
-                            newValue = texture.name;
-                        }
-                        break;
-                    }
                 }
             }
             var newPort = new MaterialXPortData(input.Name, input.DataType, newValue);

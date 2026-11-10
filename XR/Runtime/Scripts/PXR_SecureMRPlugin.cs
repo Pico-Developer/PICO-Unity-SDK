@@ -148,6 +148,30 @@ namespace ByteDance.PICO.SecureMR
         public int height;
     }
 
+    public enum SecureMRAudioFormatPcm
+    {
+        Pcm16Bit = 1,
+        Pcm32Bit = 2,
+        PcmFloat = 3,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SecureMROperatorAudioMicrophone
+    {
+        public XrStructureType type;
+        public IntPtr next;
+        public SecureMRAudioFormatPcm sampleFormat;
+        public int sampleRate;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SecureMROperatorAudioSpeaker
+    {
+        public XrStructureType type;
+        public IntPtr next;
+        public int sampleRate;
+    }
+
     public enum ResultMsg
     {
         Unknown = int.MaxValue,
@@ -200,6 +224,7 @@ namespace ByteDance.PICO.SecureMR
     {
         public XrStructureType type;
         public IntPtr next;
+        [MarshalAs(UnmanagedType.LPUTF8Str)]
         public string configText;
         public int configTextLength;
     }
@@ -455,6 +480,14 @@ namespace ByteDance.PICO.SecureMR
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Pxr_CreateSecureMROperatorRenderText(ulong pipelineHandle,
             ref SecureMROperatorRenderText config, out ulong operatorHandle);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Pxr_CreateSecureMROperatorMicrophone(ulong pipelineHandle,
+            ref SecureMROperatorAudioMicrophone config, out ulong operatorHandle);
+
+        [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Pxr_CreateSecureMROperatorSpeaker(ulong pipelineHandle,
+            ref SecureMROperatorAudioSpeaker config, out ulong operatorHandle);
 
         [DllImport(PXR_Plugin.PXR_PLATFORM_DLL, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Pxr_CreateSecureMROperatorModel(ulong pipelineHandle, ref SecureMROperatorModel model,
@@ -1611,24 +1644,35 @@ namespace ByteDance.PICO.SecureMR
                     tensorUsage = usage,
                 };
 
-                if (dimensions.Length > 0)
+                try
                 {
-                    int size = Marshal.SizeOf(typeof(int)) * dimensions.Length;
-                    createInfo.dimensions = Marshal.AllocHGlobal(size);
-                    Marshal.Copy(dimensions, 0, createInfo.dimensions, size);
+                    if (dimensions.Length > 0)
+                    {
+                        int dimensionsSizeInBytes = checked(
+                            Marshal.SizeOf(typeof(int)) * dimensions.Length);
+                        createInfo.dimensions = Marshal.AllocHGlobal(dimensionsSizeInBytes);
+                        Marshal.Copy(dimensions, 0, createInfo.dimensions, dimensions.Length);
+                    }
+
+                    int formatSize = Marshal.SizeOf(typeof(SecureMRTensorFormat));
+                    createInfo.format = Marshal.AllocHGlobal(formatSize);
+                    Marshal.StructureToPtr(tensorFormat, createInfo.format, false);
+
+                    var result = Pxr_CreateSecureMRTensorByShape(frameworkHandle, createInfo, out tensorHandle);
+                    return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
                 }
-
-                int size1 = Marshal.SizeOf(typeof(SecureMRTensorFormat));
-                createInfo.format = Marshal.AllocHGlobal(size1);
-                Marshal.StructureToPtr(tensorFormat, createInfo.format, false);
-
-                var result = Pxr_CreateSecureMRTensorByShape(frameworkHandle, createInfo, out tensorHandle);
-                if (dimensions.Length > 0)
+                finally
                 {
-                    Marshal.FreeHGlobal(createInfo.dimensions);
+                    if (createInfo.dimensions != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(createInfo.dimensions);
+                    }
+
+                    if (createInfo.format != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(createInfo.format);
+                    }
                 }
-                
-                return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
 #else
             tensorHandle = 0;
             return PxrResult.SUCCESS;
@@ -1657,24 +1701,36 @@ namespace ByteDance.PICO.SecureMR
                     tensorUsage = usage,
                 };
 
-                if (dimensions.Length > 0)
+                try
                 {
-                    createInfo.dimensionsCount = (uint)dimensions.Length;
-                    int size = Marshal.SizeOf(typeof(int)) * dimensions.Length;
-                    createInfo.dimensions = Marshal.AllocHGlobal(size);
-                    Marshal.Copy(dimensions, 0, createInfo.dimensions, size);
-                }
+                    if (dimensions.Length > 0)
+                    {
+                        createInfo.dimensionsCount = (uint)dimensions.Length;
+                        int dimensionsSizeInBytes = checked(
+                            Marshal.SizeOf(typeof(int)) * dimensions.Length);
+                        createInfo.dimensions = Marshal.AllocHGlobal(dimensionsSizeInBytes);
+                        Marshal.Copy(dimensions, 0, createInfo.dimensions, dimensions.Length);
+                    }
 
-                int size1 = Marshal.SizeOf(typeof(SecureMRTensorFormat));
-                createInfo.format = Marshal.AllocHGlobal(size1);
-                Marshal.StructureToPtr(tensorFormat, createInfo.format, false);
-                var result = Pxr_CreateSecureMRPipelineTensorByShape(pipelineHandle, createInfo, out tensorHandle);
-                if (dimensions.Length > 0)
-                {
-                    Marshal.FreeHGlobal(createInfo.dimensions);
+                    int formatSize = Marshal.SizeOf(typeof(SecureMRTensorFormat));
+                    createInfo.format = Marshal.AllocHGlobal(formatSize);
+                    Marshal.StructureToPtr(tensorFormat, createInfo.format, false);
+
+                    var result = Pxr_CreateSecureMRPipelineTensorByShape(pipelineHandle, createInfo, out tensorHandle);
+                    return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
                 }
-                
-                return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
+                finally
+                {
+                    if (createInfo.dimensions != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(createInfo.dimensions);
+                    }
+
+                    if (createInfo.format != IntPtr.Zero)
+                    {
+                        Marshal.FreeHGlobal(createInfo.format);
+                    }
+                }
 #else
             tensorHandle = 0;
             return PxrResult.SUCCESS;
@@ -2046,6 +2102,43 @@ namespace ByteDance.PICO.SecureMR
 #endif
         }
 
+        public static PxrResult UPxr_CreateSecureMROperatorMicrophone(ulong pipelineHandle,
+            SecureMRAudioFormatPcm sampleFormat, int sampleRate, out ulong operatorHandle)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            SecureMROperatorAudioMicrophone config = new SecureMROperatorAudioMicrophone
+            {
+                type = XrStructureType.XR_TYPE_SECURE_MR_OPERATOR_AUDIO_MICROPHONE_PICO,
+                next = IntPtr.Zero,
+                sampleFormat = sampleFormat,
+                sampleRate = sampleRate,
+            };
+            var result = Pxr_CreateSecureMROperatorMicrophone(pipelineHandle, ref config, out operatorHandle);
+            return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
+#else
+            operatorHandle = 0;
+            return PxrResult.SUCCESS;
+#endif
+        }
+
+        public static PxrResult UPxr_CreateSecureMROperatorSpeaker(ulong pipelineHandle, int sampleRate,
+            out ulong operatorHandle)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            SecureMROperatorAudioSpeaker config = new SecureMROperatorAudioSpeaker
+            {
+                type = XrStructureType.XR_TYPE_SECURE_MR_OPERATOR_AUDIO_SPEAKER_PICO,
+                next = IntPtr.Zero,
+                sampleRate = sampleRate,
+            };
+            var result = Pxr_CreateSecureMROperatorSpeaker(pipelineHandle, ref config, out operatorHandle);
+            return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
+#else
+            operatorHandle = 0;
+            return PxrResult.SUCCESS;
+#endif
+        }
+
         public static PxrResult UPxr_CreateSecureMrOperatorModel(
             ulong pipelineHandle,
             byte[] modelData,
@@ -2123,17 +2216,22 @@ namespace ByteDance.PICO.SecureMR
 #endif
         }
 
+        internal static SecureMROperatorJavascript CreateJavascriptConfig(string configText)
+        {
+            return new SecureMROperatorJavascript
+            {
+                type = XrStructureType.XR_TYPE_SECURE_MR_OPERATOR_JAVASCRIPT_PICO,
+                next = IntPtr.Zero,
+                configText = configText,
+                configTextLength = Encoding.UTF8.GetByteCount(configText),
+            };
+        }
+
         public static PxrResult UPxr_CreateSecureMROperatorJavascript(ulong pipelineHandle, string configText,
             out ulong operatorHandle)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                SecureMROperatorJavascript config = new SecureMROperatorJavascript
-                {
-                    type = XrStructureType.XR_TYPE_SECURE_MR_OPERATOR_JAVASCRIPT_PICO,
-                    next = IntPtr.Zero,
-                    configText = configText,
-                    configTextLength = configText.Length,
-                };
+                var config = CreateJavascriptConfig(configText);
                 var result = Pxr_CreateSecureMROperatorJavascript(pipelineHandle, ref config, out operatorHandle);
                 return PXR_Plugin.MixedReality.UPxr_ConvertIntToPxrResult(result);
 #else

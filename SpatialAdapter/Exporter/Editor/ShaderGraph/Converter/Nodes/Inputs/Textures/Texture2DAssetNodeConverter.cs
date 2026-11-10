@@ -16,7 +16,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 return false;
 
             return downstreamEdges.All(edge =>
-                edge.inputSlot.node is SampleTexture2DNode &&
+                (edge.inputSlot.node is SampleTexture2DNode || edge.inputSlot.node is NormalFromTextureNode) &&
                 edge.inputSlot.slot.RawDisplayName() == "Texture");
         }
 

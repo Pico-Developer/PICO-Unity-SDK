@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -321,8 +321,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                 return false;
             }
         }
-        
-        public static bool KillServer()
+
+        public static bool ExecuteCommand(String arg)
         {
             if (string.IsNullOrEmpty(adbPath.Value))
             {
@@ -336,7 +336,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = adbPath.Value,
-                        Arguments = "kill-server",
+                        Arguments = arg,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -355,13 +355,13 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                 }
                 else
                 {
-                    UnityEngine.Debug.LogError($"Failed to kill ADB server: {error}");
+                    UnityEngine.Debug.LogError($"Failed to run command {arg}:  {error}");
                     return false;
                 }
             }
             catch (System.Exception ex)
             {
-                UnityEngine.Debug.LogError($"Exception during ADB kill-server: {ex.Message}");
+                UnityEngine.Debug.LogError($"Exception during ADB command {arg}: {ex.Message}");
                 return false;
             }
         }

@@ -2,6 +2,30 @@
 Unity Simulation & Runtime support for Spatial Backend and Spatial Engine.
 
 Release Notes:
+V6.2.0 (10/15):
+  - Upgrade to SpatialPack 6.2.mol12 
+  - Dynamic Lights
+  - Unity UI RawImage
+  - UI Image color changes
+  - Support ShaderGraph + Play-to-PICO
+  - ShaderGraph Unique Name + BundleTool 
+  - Add new ShaderGraph nodes based on developer priority
+  - Improved Unity 6 Support
+  - Add MR Sample (XR Hands)
+  - Bug fixes
+
+V6.1.0 (8/12):
+  - Upgrade to SpatialPack 6.1
+  - ShaderGraph Export export order fix 
+  - ShaderGraph Unique Material name 
+  - Agentic AI integration
+  - Spatial Camera Mode API for XRSDK
+  - Particle Gradient
+  - Particle Curve
+  - Bug fixes
+    - Dynamic Texture y-flip fix 
+    - Close window P2D 
+
 V6.0.0 (6/22):
   - Upgrade to SpatialPack DC
   - Particle Random Color
@@ -11,7 +35,8 @@ V6.0.0 (6/22):
   - Bug fixes
     - Detect AndroidManifest.xml changes and show in Validation check
     - Fix for null script in defaultSpatialCameraConfiguration
-  - Particle Curve (experimental)
+    - Fix for particle rotation
+    - Other Particle related fixes
 
 v0.13.0 (5/15):
   - Upgrade to SpatialPack Beta 2.1

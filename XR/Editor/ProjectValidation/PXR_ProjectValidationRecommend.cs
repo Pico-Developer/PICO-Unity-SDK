@@ -517,21 +517,53 @@ namespace ByteDance.PICO.XR.Editor
                 new BuildValidationRule
                 {
                     Category = k_Catergory,
-                    Message = "When using Vulkan, it is recommended to check the 'Optimize Buffer Discards' option.",
+                    Message = "When using Vulkan without PTW, it is recommended to enable 'Optimize Buffer Discards'.",
                     IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
                     CheckPredicate = () =>
                     {
-                        if (GraphicsDeviceType.OpenGLES3 == PlayerSettings.GetGraphicsAPIs(EditorUserBuildSettings.activeBuildTarget)[0])
+                        if (GraphicsDeviceType.Vulkan != PlayerSettings.GetGraphicsAPIs(EditorUserBuildSettings.activeBuildTarget)[0])
+                        {
+                            return true;
+                        }
+
+                        if (GetSettings().reprojectionMode == PxrReprojectionMode.PTW)
                         {
                             return true;
                         }
 
                         return GetSettings().optimizeBufferDiscards;
                     },
-                    FixItMessage = "Open Project Settings > Player Settings> PICO > 'Optimize Buffer Discards' set to enable.",
+                    FixItMessage = "Open Project Settings > Player Settings > PICO > enable 'Optimize Buffer Discards'.",
                     FixIt = () =>
                     {
                         GetSettings().optimizeBufferDiscards = true;
+                        PXR_AppLog.PXR_OnEvent(PXR_AppLog.strProjectValidation, PXR_AppLog.strProjectValidation_VKOptimizeBufferDiscards);
+                    },
+                    Error = false
+                },
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = "When using PTW with Vulkan, 'Optimize Buffer Discards' must be disabled to preserve depth.",
+                    IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
+                    CheckPredicate = () =>
+                    {
+                        if (GraphicsDeviceType.Vulkan != PlayerSettings.GetGraphicsAPIs(EditorUserBuildSettings.activeBuildTarget)[0])
+                        {
+                            return true;
+                        }
+
+                        if (GetSettings().reprojectionMode != PxrReprojectionMode.PTW)
+                        {
+                            return true;
+                        }
+
+                        return !GetSettings().optimizeBufferDiscards;
+                    },
+                    FixItMessage = "Open Project Settings > Player Settings > PICO > disable 'Optimize Buffer Discards'.",
+                    FixIt = () =>
+                    {
+                        GetSettings().optimizeBufferDiscards = false;
                         PXR_AppLog.PXR_OnEvent(PXR_AppLog.strProjectValidation, PXR_AppLog.strProjectValidation_VKOptimizeBufferDiscards);
                     },
                     Error = false
@@ -599,11 +631,15 @@ namespace ByteDance.PICO.XR.Editor
                     Category = k_Catergory,
                     Message = "Not recommended to use both 'Application SpaceWarp' and 'Content Protect' simultaneously.",
                     IsRuleEnabled = PXR_Utils.IsPXRValidationEnabled,
-                    CheckPredicate = () => { return !(PXR_ProjectSetting.GetProjectConfig().useContentProtect && GetSettings().enableAppSpaceWarp); },
+                    CheckPredicate = () =>
+                    {
+                        return !(PXR_ProjectSetting.GetProjectConfig().useContentProtect &&
+                                 GetSettings().reprojectionMode == PxrReprojectionMode.AppSW);
+                    },
                     FixItMessage = "Open Project Settings > Player Settings> PICO > Application SpaceWarp: disabled.",
                     FixIt = () =>
                     {
-                        GetSettings().enableAppSpaceWarp = false;
+                        GetSettings().reprojectionMode = PxrReprojectionMode.None;
                         PXR_AppLog.PXR_OnEvent(PXR_AppLog.strProjectValidation, PXR_AppLog.strProjectValidation_APPSWNoContentProtect);
                     },
                     Error = false

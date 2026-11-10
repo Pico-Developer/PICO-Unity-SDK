@@ -69,9 +69,6 @@ namespace ByteDance.PICO.XR
             sharpeningEnhance = SharpeningEnhance.None,
         };
 
-        public string presetName = "Default";
-        public long updatedAtUnixMs;
-
         public PXR_PerformancePackDeviceConfig GetDeviceConfig(PXR_PerformancePackDeviceProfile profile)
         {
             EnsureDeviceConfigs();

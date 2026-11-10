@@ -5,6 +5,30 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 {
     internal class SplitNodeConverter : NodeConverterBase<SplitNode>
     {
+        private static bool TryGetUpstreamPort(
+            MaterialSlot slot,
+            MaterialXGraphData graph,
+            StagingEdges stagingEdges,
+            out (string xNode, string xPort) srcPort)
+        {
+            srcPort = default;
+            if (!slot.isConnected)
+                return false;
+
+            var upstreamSlot = ShaderGraphUtil.SlotUtil.GetOutputSlot(slot);
+            if (upstreamSlot == null)
+                return false;
+
+            if (!stagingEdges.SlotToPort.TryGetValue(upstreamSlot.slotReference, out srcPort))
+            {
+                ConverterLookup.ConvertNode(upstreamSlot.owner, graph, stagingEdges);
+                if (!stagingEdges.SlotToPort.TryGetValue(upstreamSlot.slotReference, out srcPort))
+                    return false;
+            }
+
+            return true;
+        }
+
         private static string GetChannel(MaterialSlot outputSlot)
         {
             return outputSlot.RawDisplayName() switch
@@ -60,8 +84,27 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 }
 
                 separateNode.AddPortWithStringValue("channels", MaterialXDataType.String, channel);
+                var defaultNumericValue = ShaderGraphUtil.SlotUtil.GetSlotDefaultValue(inputSlot);
+                var defaultStringValue = ShaderGraphUtil.SlotUtil.GetSlotDefaultFilename(inputSlot);
 
-                MaterialXGraphUtil.AddInputPortAndEdge(stagingEdges, separateNode, inputSlot, "in", inputType);
+                if (TryGetUpstreamPort(inputSlot, graph, stagingEdges, out var srcPort))
+                {
+                    separateNode.AddPort("in", inputType);
+                    graph.AddEdge(srcPort.xNode, separateNode.Name, "in");
+                }
+                else if (defaultNumericValue != null)
+                {
+                    separateNode.AddPortWithValue("in", inputType, defaultNumericValue);
+                }
+                else if (!string.IsNullOrEmpty(defaultStringValue))
+                {
+                    separateNode.AddPortWithStringValue("in", inputType, defaultStringValue);
+                }
+                else
+                {
+                    separateNode.AddPort("in", inputType);
+                }
+
                 stagingEdges.AddPort(outputSlot.slotReference, separateNode.Name);
             }
         }

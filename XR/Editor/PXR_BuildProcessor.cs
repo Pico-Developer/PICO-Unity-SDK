@@ -13,9 +13,13 @@ PICO Technology Co., Ltd.
 using System;
 using System.Collections.Generic;
 using System.Xml;
+using System.Text;
 
 using UnityEngine;
 using UnityEngine.Rendering;
+#if AR_FOUNDATION_5 || AR_FOUNDATION_6
+using UnityEngine.XR.ARSubsystems;
+#endif
 using UnityEditor.Android;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -40,6 +44,19 @@ namespace ByteDance.PICO.XR.Editor
     {
         public override string BuildSettingsKey { get { return "ByteDance.PICO.XR.Settings"; } }
        
+        public static bool RequiresSpatialDataPermission(
+            PXR_ProjectSetting projectConfig)
+        {
+            return projectConfig.sceneCapture
+                   || projectConfig.spatialMesh
+                   || projectConfig.planeDetection
+                   || projectConfig.environmentDepth
+                   || projectConfig.lightEstimation
+                   || projectConfig.objectTracking
+                   || projectConfig.keyboardPassthrough
+                   || projectConfig.imageTracking;
+        }
+
         public static bool IsLoaderExists(bool isPlatform = false)
         {
             XRGeneralSettings generalSettings = XRGeneralSettingsPerBuildTarget.XRGeneralSettingsForBuildTarget(BuildTargetGroup.Android);
@@ -249,6 +266,10 @@ namespace ByteDance.PICO.XR.Editor
                     }
                 }
 #endif
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+                PXR_ImageTrackingBuildValidator.ValidateAllProjectLibrariesOrThrow(
+                    PXR_ProjectSetting.GetProjectConfig().imageTracking);
+#endif
             }
 #endif
             }
@@ -361,16 +382,25 @@ namespace ByteDance.PICO.XR.Editor
             return;
 #endif
             doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pvr.app.type"}},new Dictionary<string, string>{{"value","vr"}});
-            doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pxr.sdk.version_code"}},new Dictionary<string, string>{{"value", "6011"}});
+            doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pxr.sdk.version_code"}},new Dictionary<string, string>{{"value", "6020"}});
             doc.InsertAttributeInTargetTag(applicationTagPath,null, new Dictionary<string, string>() {{"requestLegacyExternalStorage", "true"}});
 #if ENABLE_PICO_OPENXR_SDK
             doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","use.pxr.sdk"}},new Dictionary<string, string>{{"value", "2"}});
             doc.InsertAttributeInTargetTag(metaDataTagPath,new Dictionary<string, string>{{"name","pvr.sdk.version"}},new Dictionary<string, string>{{"value","Unity_OpenXR_"+PXR_Plugin.PXR_SDK_Version}});
             var settings = OpenXRSettings.GetSettingsForBuildTargetGroup(BuildTargetGroup.Android);
             bool mrPermission = false;
+            doc.ApplyImageTrackingMetadata(false);
 
             foreach (var feature in settings.GetFeatures<OpenXRFeature>())
             {
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+                if (feature is PICOSpatialImageTracking)
+                {
+                    doc.ApplyImageTrackingMetadata(feature.enabled);
+                    mrPermission |= feature.enabled;
+                }
+#endif
+
                 if (feature is PICOSceneCapture)
                 {
                     if (feature.enabled)
@@ -577,6 +607,7 @@ namespace ByteDance.PICO.XR.Editor
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_light_estimation" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().lightEstimation ? "1" : "0" } });
             bool objectTrackingEnabled = PXR_ProjectSetting.GetProjectConfig().objectTracking;
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_dynamic_object_tracking" } }, new Dictionary<string, string> { { "value", objectTrackingEnabled ? "1" : "0" } });
+            doc.ApplyImageTrackingMetadata(PXR_ProjectSetting.GetProjectConfig().imageTracking);
             doc.RemoveAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_keyboard_passthrough" } });
             doc.RemoveAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "enable_environment_passthrough_preference" } });
             doc.InsertAttributeInTargetTag(metaDataTagPath, new Dictionary<string, string> { { "name", "pvr.SuperResolution" } }, new Dictionary<string, string> { { "value", PXR_ProjectSetting.GetProjectConfig().superResolution ? "1" : "0" } });
@@ -598,7 +629,8 @@ namespace ByteDance.PICO.XR.Editor
                 doc.CreateElementInTag(manifestTagPath, usesPermissionTagName, new Dictionary<string, string> { { "name", "com.pico.xrpermission.ETFR" } });
             }
 
-            if (PXR_ProjectSetting.GetProjectConfig().sceneCapture || PXR_ProjectSetting.GetProjectConfig().spatialMesh || PXR_ProjectSetting.GetProjectConfig().planeDetection || PXR_ProjectSetting.GetProjectConfig().environmentDepth || PXR_ProjectSetting.GetProjectConfig().lightEstimation || PXR_ProjectSetting.GetProjectConfig().objectTracking || PXR_ProjectSetting.GetProjectConfig().keyboardPassthrough)
+            if (PXR_BuildProcessor.RequiresSpatialDataPermission(
+                    PXR_ProjectSetting.GetProjectConfig()))
             {
                 doc.CreateElementInTag(manifestTagPath, usesPermissionTagName,
                     new Dictionary<string, string> { { "name", "com.picovr.permission.SPATIAL_DATA" } });
@@ -651,6 +683,28 @@ namespace ByteDance.PICO.XR.Editor
     public static class PXR_XmlTools
     {
         static readonly string androidURI = "http://schemas.android.com/apk/res/android";
+
+        public static void ApplyImageTrackingMetadata(
+            this XmlDocument doc,
+            bool enabled)
+        {
+            const string metadataPath = "/manifest/application/meta-data";
+            var filter = new Dictionary<string, string>
+            {
+                { "name", "enable_image_tracking" }
+            };
+            if (!enabled)
+            {
+                doc.RemoveAttributeInTargetTag(metadataPath, filter);
+                return;
+            }
+
+            doc.InsertAttributeInTargetTag(
+                metadataPath,
+                filter,
+                new Dictionary<string, string> { { "value", "1" } });
+        }
+
         public static void InsertAttributeInTargetTag(this XmlDocument doc, string tagPath, Dictionary<string, string> filterDic, Dictionary<string, string> attributeDic)
         {
             XmlElement targetElement = null;
@@ -769,4 +823,180 @@ namespace ByteDance.PICO.XR.Editor
             return settings;
         }
     }
+
+#if AR_FOUNDATION_6_IMAGE_TRACKING
+    public static class PXR_ImageTrackingBuildValidator
+    {
+        private const string ImageLibrarySearchFilter = "t:XRReferenceImageLibrary";
+        private const string LogTag = "[PXR_ImageTrackingDebug]";
+        private const int MaximumReferenceImageCountExclusive = 300;
+        private const int MaximumImageDimensionInclusive = 640;
+        private const int RecommendedMinimumImageDimension = 300;
+
+        public static void ValidateAllProjectLibrariesOrThrow(bool imageTrackingEnabled)
+        {
+            ValidateAllProjectLibrariesOrThrow(
+                imageTrackingEnabled,
+                FindProjectImageLibraryAssetPaths());
+        }
+
+        public static void ValidateAllProjectLibrariesOrThrow(
+            bool imageTrackingEnabled,
+            IEnumerable<string> assetPaths)
+        {
+            if (!imageTrackingEnabled)
+            {
+                return;
+            }
+
+            if (assetPaths == null)
+            {
+                throw new ArgumentNullException(nameof(assetPaths));
+            }
+
+            List<string> invalidEntries = new List<string>();
+            foreach (string assetPath in assetPaths)
+            {
+                if (string.IsNullOrEmpty(assetPath))
+                {
+                    continue;
+                }
+
+                XRReferenceImageLibrary library =
+                    AssetDatabase.LoadAssetAtPath<XRReferenceImageLibrary>(
+                        assetPath);
+                if (library == null)
+                {
+                    continue;
+                }
+
+                CollectImageLibraryValidationIssues(
+                    library,
+                    assetPath,
+                    invalidEntries);
+            }
+
+            if (invalidEntries.Count == 0)
+            {
+                return;
+            }
+
+            throw new BuildFailedException(CreateFailureMessage(invalidEntries));
+        }
+
+        private static string[] FindProjectImageLibraryAssetPaths()
+        {
+            string[] guids = AssetDatabase.FindAssets(
+                ImageLibrarySearchFilter,
+                new[] { "Assets" });
+            string[] paths = new string[guids.Length];
+            for (int index = 0; index < guids.Length; index++)
+            {
+                paths[index] = AssetDatabase.GUIDToAssetPath(guids[index]);
+            }
+
+            return paths;
+        }
+
+        private static void CollectImageLibraryValidationIssues(
+            XRReferenceImageLibrary library,
+            string assetPath,
+            ICollection<string> invalidEntries)
+        {
+            int imageCount = library.count;
+            if (imageCount <= 0 || imageCount >= MaximumReferenceImageCountExclusive)
+            {
+                invalidEntries.Add(
+                    $"- {assetPath}: image count must satisfy 0 < count < 300, actual={imageCount}.");
+            }
+
+            var guids = new HashSet<Guid>();
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            for (int index = 0; index < library.count; index++)
+            {
+                XRReferenceImage referenceImage = library[index];
+                string imageName = string.IsNullOrEmpty(referenceImage.name)
+                    ? "<unnamed>"
+                    : referenceImage.name;
+                Texture2D texture = referenceImage.texture;
+                if (texture == null)
+                {
+                    invalidEntries.Add(
+                        $"- {assetPath} [{index}] {imageName}: Keep Texture at Runtime must be enabled.");
+                }
+
+                Vector2 size = referenceImage.size;
+                bool hasValidPhysicalSize =
+                    referenceImage.specifySize
+                    && IsFiniteAndPositive(referenceImage.width)
+                    && IsFiniteAndPositive(size.x)
+                    && IsFiniteAndPositive(size.y);
+
+                if (!hasValidPhysicalSize)
+                {
+                    invalidEntries.Add(
+                        $"- {assetPath} [{index}] {imageName}: Physical Size must be specified and greater than zero.");
+                }
+
+                if (texture != null)
+                {
+                    if (texture.width > MaximumImageDimensionInclusive
+                        || texture.height > MaximumImageDimensionInclusive)
+                    {
+                        invalidEntries.Add(
+                            $"- {assetPath} [{index}] {imageName}: Resolution must be less than or equal to 640x640, actual={texture.width}x{texture.height}.");
+                    }
+                    else if (texture.width < RecommendedMinimumImageDimension
+                             || texture.height < RecommendedMinimumImageDimension)
+                    {
+                        Debug.LogWarning(
+                            $"{LogTag} {assetPath} [{index}] {imageName}: Reference image dimensions below 300 pixels may reduce tracking quality, actual={texture.width}x{texture.height}.");
+                    }
+                }
+
+                if (!guids.Add(referenceImage.guid))
+                {
+                    Debug.LogWarning(
+                        $"{LogTag} {assetPath} [{index}] {imageName}: The source image library contains a duplicate reference image GUID. Runtime image mapping may be ambiguous.");
+                }
+
+                if (!names.Add(referenceImage.name))
+                {
+                    Debug.LogWarning(
+                        $"{LogTag} {assetPath} [{index}] {imageName}: The source image library contains duplicate reference image names. Use reference image GUIDs for unique mapping.");
+                }
+            }
+        }
+
+        private static bool IsFiniteAndPositive(float value)
+        {
+            return value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        private static string CreateFailureMessage(IReadOnlyList<string> invalidEntries)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("PICO Image Tracking build validation failed.");
+            builder.AppendLine(
+                "XR_PICO_spatial_image_tracking requires image libraries to satisfy these blocking requirements before building:");
+            builder.AppendLine("- 0 < image count < 300");
+            builder.AppendLine("- Keep Texture at Runtime is enabled for every reference image");
+            builder.AppendLine("- Physical Size / physical width is positive for every reference image");
+            builder.AppendLine("- Every reference image resolution is less than or equal to 640x640 pixels");
+            builder.AppendLine();
+            builder.AppendLine("Blocking validation issues:");
+            for (int index = 0; index < invalidEntries.Count; index++)
+            {
+                builder.AppendLine(invalidEntries[index]);
+            }
+            builder.AppendLine();
+            builder.Append(
+                "Open each XR Reference Image Library and fix the listed blocking requirements. Non-blocking quality issues are reported as warnings only.");
+            return builder.ToString();
+        }
+    }
+#endif
 }
+
+
+

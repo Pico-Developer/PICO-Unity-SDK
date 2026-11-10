@@ -1,4 +1,4 @@
-﻿/*******************************************************************************
+/*******************************************************************************
 Copyright © 2015-2022 PICO Technology Co., Ltd.All rights reserved.  
 
 NOTICE：All information contained herein is, and remains the property of 
@@ -55,6 +55,7 @@ namespace ByteDance.PICO.XR
         public PxrEnvironmentTextureResolution lightEstimationTextureResolution;
         public bool objectTracking;
         public bool keyboardPassthrough;
+        public bool imageTracking;
         #region Project Validation
         public bool arFoundation;
         public bool mrSafeguard;
@@ -132,6 +133,7 @@ namespace ByteDance.PICO.XR
                 projectConfig.lightEstimationTextureResolution = PxrEnvironmentTextureResolution.Size8x8;
                 projectConfig.objectTracking = false;
                 projectConfig.keyboardPassthrough = false;
+                projectConfig.imageTracking = false;
                 if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.Android)
                 {
                     return projectConfig;

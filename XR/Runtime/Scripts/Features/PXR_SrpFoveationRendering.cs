@@ -21,11 +21,19 @@ namespace ByteDance.PICO.XR
     {
 #if UNITY_6000_0_OR_NEWER
         private static readonly List<XRDisplaySubsystem> DisplaySubsystems = new List<XRDisplaySubsystem>();
+        private static bool hasRequestedState;
+        private static FoveationLevel requestedLevel;
+        private static bool requestedIsETFR;
 #endif
 
         internal static bool TryApplyProjectSettings()
         {
 #if UNITY_6000_0_OR_NEWER
+            if (hasRequestedState)
+            {
+                return TryApplyRequestedState();
+            }
+
             PXR_ProjectSetting projectConfig = PXR_ProjectSetting.GetProjectConfig();
             if (projectConfig == null)
             {
@@ -38,24 +46,43 @@ namespace ByteDance.PICO.XR
 #endif
         }
 
+        internal static bool TryReapplyLastRequestedState()
+        {
+#if UNITY_6000_0_OR_NEWER
+            return hasRequestedState ? TryApplyRequestedState() : TryApplyProjectSettings();
+#else
+            return false;
+#endif
+        }
+
         internal static bool TrySetFoveationLevel(FoveationLevel level, bool isETFR)
         {
 #if UNITY_6000_0_OR_NEWER
+            requestedLevel = level;
+            requestedIsETFR = isETFR;
+            hasRequestedState = true;
+            return TryApplyRequestedState();
+#else
+            return false;
+#endif
+        }
+
+#if UNITY_6000_0_OR_NEWER
+        private static bool TryApplyRequestedState()
+        {
             XRDisplaySubsystem displaySubsystem;
             if (!TryGetRunningDisplaySubsystem(out displaySubsystem))
             {
                 return false;
             }
 
-            displaySubsystem.foveatedRenderingFlags = isETFR && level != FoveationLevel.None
+            displaySubsystem.foveatedRenderingFlags = requestedIsETFR && requestedLevel != FoveationLevel.None
                 ? XRDisplaySubsystem.FoveatedRenderingFlags.GazeAllowed
                 : XRDisplaySubsystem.FoveatedRenderingFlags.None;
-            displaySubsystem.foveatedRenderingLevel = ToSrpFoveationLevel(level);
+            displaySubsystem.foveatedRenderingLevel = ToSrpFoveationLevel(requestedLevel);
             return true;
-#else
-            return false;
-#endif
         }
+#endif
 
         internal static bool TryGetFoveationLevel(out FoveationLevel level)
         {

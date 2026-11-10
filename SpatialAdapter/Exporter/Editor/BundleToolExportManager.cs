@@ -93,6 +93,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             
             Debug.Log($"SpatialBundle exited with code {bundleProcess.ExitCode}");
             
+            
             return (bundleProcess.ExitCode == 0);
         }
         

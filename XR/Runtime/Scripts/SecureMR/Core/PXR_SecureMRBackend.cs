@@ -1,6 +1,7 @@
 #if !ENABLE_PICO_OPENXR_SDK
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using ByteDance.PICO.XR;
 using Unity.Collections;
@@ -222,6 +223,13 @@ namespace ByteDance.PICO.SecureMR
                 var cfg = (NmsOperatorConfiguration)configuration;
                 result = PXR_SecureMRPlugin.UPxr_CreateSecureMROperatorNonMaximumSuppression(pipelineHandle, cfg.threshold, out operatorHandle);
             }
+            else if (operatorType == SecureMROperatorType.Norm &&
+                     configuration is NormOperatorConfiguration normConfig && normConfig.normType != "L2")
+            {
+                // OpenXR exposes no NORM configuration structure for L1/INF.
+                result = PXR_SecureMRPlugin.UPxr_CreateSecureMROperatorJavascript(
+                    pipelineHandle, normConfig.XrScript, out operatorHandle);
+            }
             else if (operatorType == SecureMROperatorType.Normalize)
             {
                 var cfg = (NormalizeOperatorConfiguration)configuration;
@@ -246,6 +254,18 @@ namespace ByteDance.PICO.SecureMR
             {
                 var cfg = (RenderTextOperatorConfiguration)configuration;
                 result = PXR_SecureMRPlugin.UPxr_CreateSecureMROperatorRenderText(pipelineHandle, cfg.typeface, cfg.languageAndLocale, cfg.width, cfg.height, out operatorHandle);
+            }
+            else if (operatorType == SecureMROperatorType.Microphone)
+            {
+                var cfg = (MicrophoneOperatorConfiguration)configuration;
+                result = PXR_SecureMRPlugin.UPxr_CreateSecureMROperatorMicrophone(
+                    pipelineHandle, ParseAudioFormat(cfg.pcmType), cfg.sampleRate, out operatorHandle);
+            }
+            else if (operatorType == SecureMROperatorType.Speaker)
+            {
+                var cfg = (SpeakerOperatorConfiguration)configuration;
+                result = PXR_SecureMRPlugin.UPxr_CreateSecureMROperatorSpeaker(
+                    pipelineHandle, cfg.sampleRate, out operatorHandle);
             }
             else if (operatorType == SecureMROperatorType.RunModelInference)
             {
@@ -284,6 +304,19 @@ namespace ByteDance.PICO.SecureMR
             }
 
             return operatorHandle;
+        }
+
+        private static SecureMRAudioFormatPcm ParseAudioFormat(string value)
+        {
+            switch (value)
+            {
+                case "PCM_16BIT":
+                case "PCM_INT16":
+                    return SecureMRAudioFormatPcm.Pcm16Bit;
+                case "PCM_32BIT": return SecureMRAudioFormatPcm.Pcm32Bit;
+                case "PCM_FLOAT": return SecureMRAudioFormatPcm.PcmFloat;
+                default: throw new InvalidOperationException($"Unsupported microphone PCM encoding: {value}");
+            }
         }
 
         public PxrResult SetOperand(Operator op, string name, Tensor tensor)
@@ -791,7 +824,12 @@ namespace ByteDance.PICO.SecureMR
 
                 if (operatorType == SecureMROperatorType.Nms)
                 {
-                    return ((NmsOperatorConfiguration)configuration).threshold.ToString();
+                    return ((NmsOperatorConfiguration)configuration).threshold.ToString(CultureInfo.InvariantCulture);
+                }
+
+                if (operatorType == SecureMROperatorType.Norm)
+                {
+                    return ((NormOperatorConfiguration)configuration).normType;
                 }
 
                 if (operatorType == SecureMROperatorType.Normalize)

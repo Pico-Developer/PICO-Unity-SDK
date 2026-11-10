@@ -13,7 +13,7 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
     public static class ShaderGraphExporter
     {
         public static readonly string TexturePathPrefix = "/textures/";
-        
+
         public static void ExportShaderGraph(
             string assetPath,
             string exportedFilePath,
@@ -21,7 +21,34 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             Material inputMaterial = null,
             string shaderGraphNameOverride = null)
         {
+            if (!ExportShaderGraph(
+                    assetPath,
+                    exportedFilePath,
+                    assetExportRoot,
+                    out string failureMessage,
+                    inputMaterial,
+                    shaderGraphNameOverride))
+            {
+                Debug.LogWarning(failureMessage);
+            }
+        }
+
+        public static bool ExportShaderGraph(
+            string assetPath,
+            string exportedFilePath,
+            string assetExportRoot,
+            out string failureMessage,
+            Material inputMaterial = null,
+            string shaderGraphNameOverride = null)
+        {
             GraphData shaderGraphData = ShaderGraphDeserializer.LoadGraphData(assetPath);
+            var unsupportedNodes = MaterialXGraphConverter.GetUnsupportedNodes(shaderGraphData);
+            if (unsupportedNodes.Count > 0)
+            {
+                failureMessage = FormatUnsupportedNodeMessage(assetPath, unsupportedNodes);
+                return false;
+            }
+
             MaterialXGraphData materialXGraphData = MaterialXGraphConverter.Convert(
                 shaderGraphData,
                 assetPath,
@@ -29,20 +56,19 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 
             if (materialXGraphData == null)
             {
-                Debug.LogError("Unable to export " + Path.GetFileName(assetPath));
-                return;
+                failureMessage =
+                    $"SpatialAdapter ShaderGraph Exporter: Unable to export ShaderGraph '{Path.GetFileNameWithoutExtension(assetPath)}' from '{assetPath}'.";
+                return false;
             }
 
-            ExportTextures(materialXGraphData, assetExportRoot);
-
             string outputString = MaterialXGraphSerializer.Serialize(materialXGraphData, inputMaterial);
-            string outFileRoot = Path.GetDirectoryName(exportedFilePath);
-            string outFilePath = Path.Combine(outFileRoot, materialXGraphData.Name + ".usda");
-            
-            FileInfo file = new(outFilePath);
+            ExportTextures(materialXGraphData, assetExportRoot);
+            FileInfo file = new(exportedFilePath);
             file.Directory.Create();
             File.WriteAllText(file.FullName, outputString);
-            
+
+            failureMessage = null;
+            return true;
         }
 
         private static void ExportTextures(MaterialXGraphData graph, string assetExportRoot)
@@ -79,6 +105,16 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                         e);
                 }
             }
+        }
+
+        private static string FormatUnsupportedNodeMessage(string assetPath, IReadOnlyCollection<string> unsupportedNodes)
+        {
+            string formattedNodeList = string.Join(", ", unsupportedNodes
+                .GroupBy(nodeName => nodeName)
+                .Select(group => group.Count() > 1 ? $"{group.Key} x{group.Count()}" : group.Key));
+
+            return
+                $"SpatialAdapter ShaderGraph Exporter: ShaderGraph '{Path.GetFileNameWithoutExtension(assetPath)}' from '{assetPath}' contains unsupported nodes and cannot be exported. Unsupported nodes: {formattedNodeList}.";
         }
     }
 }

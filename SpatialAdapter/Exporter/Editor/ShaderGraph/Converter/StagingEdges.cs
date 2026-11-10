@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEditor.Graphing;
 using UnityEditor.ShaderGraph;
+using UnityEngine;
 
 namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
 {
@@ -74,6 +75,8 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 MaterialXNodeData dstNode = graphData.GetNode(dstNodeName);
 
                 MaterialXPortData dstPort = dstNode.GetPort(dstPortName);
+
+                Debug.Log("Source name: " + dstPort);
 
                 MaterialXDataType srcType = srcNode.DataType;
                 MaterialXDataType dstType = dstPort.DataType;

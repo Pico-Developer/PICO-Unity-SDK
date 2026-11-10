@@ -303,6 +303,7 @@ namespace ByteDance.PICO.XR.Editor
                 projectConfig.lightEstimationTextureResolution = (PxrEnvironmentTextureResolution)EditorGUILayout.EnumPopup(" Resolution", projectConfig.lightEstimationTextureResolution);
             }
 #if ENABLE_PICO_XR_SDK
+            projectConfig.imageTracking = EditorGUILayout.Toggle("Image Tracking", projectConfig.imageTracking);
             projectConfig.objectTracking = EditorGUILayout.Toggle("Object Tracking", projectConfig.objectTracking);
 #endif
             EditorGUILayout.EndVertical();

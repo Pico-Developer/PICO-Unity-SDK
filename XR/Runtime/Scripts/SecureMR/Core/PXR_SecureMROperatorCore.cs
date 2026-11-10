@@ -52,6 +52,24 @@ namespace ByteDance.PICO.SecureMR
         }
     }
 
+    public class NormOperatorConfiguration : OperatorConfiguration
+    {
+        public string normType { get; }
+
+        public NormOperatorConfiguration(string normType = "L2")
+        {
+            if (normType != "L1" && normType != "L2" && normType != "INF")
+                throw new ArgumentException("Norm type must be L1, L2, or INF.", nameof(normType));
+            this.normType = normType;
+        }
+
+        internal string XrScript =>
+            "var operand; var result; var norm = 0; " +
+            "for (var i = 0; i < operand.length; i++) { " +
+            (normType == "L1" ? "norm += Math.abs(operand[i]); " : "norm = Math.max(norm, Math.abs(operand[i])); ") +
+            "} result[0] = norm;";
+    }
+
     public class ColorConvertOperatorConfiguration : OperatorConfiguration
     {
         public int convert { get; set; }
@@ -188,7 +206,7 @@ namespace ByteDance.PICO.SecureMR
         public MicrophoneOperatorConfiguration(int sampleRate, string pcmType)
         {
             this.sampleRate = sampleRate;
-            this.pcmType = pcmType;
+            this.pcmType = pcmType == "PCM_INT16" ? "PCM_16BIT" : pcmType;
         }
     }
 
@@ -386,6 +404,7 @@ namespace ByteDance.PICO.SecureMR
     public class NormOperator : Operator
     {
         public NormOperator(ulong pipelineHandle, SecureMROperatorType operatorType) : base(pipelineHandle, operatorType) { }
+        public NormOperator(ulong pipelineHandle, SecureMROperatorType operatorType, NormOperatorConfiguration configuration) : base(pipelineHandle, operatorType) { }
     }
     
     public class SwapHwcChwOperator : Operator

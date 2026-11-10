@@ -36,7 +36,14 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
             {
                 var graphObj = Selection.objects[i];
                 string shaderGraphPath = AssetDatabase.GetAssetPath(graphObj);
-                ShaderGraphExporter.ExportShaderGraph(shaderGraphPath, Path.Combine(outputDir, Path.GetFileName(shaderGraphPath)), outputDir);
+                if (!ShaderGraphExporter.ExportShaderGraph(
+                        shaderGraphPath,
+                        Path.Combine(outputDir, Path.GetFileName(shaderGraphPath)),
+                        outputDir,
+                        out string failureMessage))
+                {
+                    Debug.LogError(failureMessage);
+                }
             }
         }
         

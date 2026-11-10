@@ -185,9 +185,14 @@ namespace ByteDance.PICO.Spatial.Stage
             public uint semanticCountOutput;
             public IntPtr semanticLabels;//SemanticLabel[]
         }
+        // Android JNI bindings used only by UPxr_Init() on device. Guard them so the type can
+        // initialize in the Unity Editor (Play-to-PICO): UnityPlayer has no currentActivity field
+        // there, and the static constructor would throw "Field currentActivity ... not found".
+#if UNITY_ANDROID && !UNITY_EDITOR
         private static AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
         private static AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
         private static AndroidJavaClass sysActivity = new AndroidJavaClass("com.pico.stageplatform.StageFunction");
+#endif
         public static void UPxr_Init()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -302,3 +307,4 @@ namespace ByteDance.PICO.Spatial.Stage
     }
 }
 #endif
+

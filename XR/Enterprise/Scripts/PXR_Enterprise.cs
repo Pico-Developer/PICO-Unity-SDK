@@ -271,7 +271,8 @@ namespace ByteDance.PICO.Enterprise
         /// Sets the time the screen turns off when the device is not in use.
         /// </summary>
         /// <param name="timeEnum">Screen off timeout. Enumerations:
-        /// * `Never`: never off
+        /// * `DEFAULT`: default system setting
+        /// * `NEVER`: never off
         /// * `THREE`: 3s (only supported by PICO G2 4K)
         /// * `TEN`: 10s (only supported by PICO G2 4K)
         /// * `THIRTY`: 30s
@@ -293,7 +294,8 @@ namespace ByteDance.PICO.Enterprise
         /// Sets the time the system sleeps when the device is not in use.
         /// </summary>
         /// <param name="timeEnum">System sleep timeout. Enumerations:
-        /// * `Never`: never sleep
+        /// * `DEFAULT`: default system setting
+        /// * `NEVER`: never sleep
         /// * `FIFTEEN`: 15s (only supported by PICO G2 4K)
         /// * `THIRTY`: 30s (only supported by PICO G2 4K)
         /// * `SIXTY`: 60s (only supported by PICO G2 4K)
@@ -2299,13 +2301,14 @@ namespace ByteDance.PICO.Enterprise
  
         /// <summary>Sets a time after which the device automatically enters the sleep mode.</summary>
         /// <param name="delayTimeEnum">Specify the system sleep timeout. Enumerations:
+        /// * `DEFAULT`: default system setting
         /// * `FIFTEEN`: 15s (only supported by PICO G2 4K)
         /// * `THIRTY`: 30s (only supported by PICO G2 4K)
         /// * `SIXTY`: 60s (only supported by PICO G2 4K)
         /// * `THREE_HUNDRED`: 5 mins
         /// * `SIX_HUNDRED`: 10 mins
         /// * `ONE_THOUSAND_AND_EIGHT_HUNDRED`: 30 mins
-        /// * `Never`: never sleep
+        /// * `NEVER`: never sleep
         /// </param>
         /// <returns>
         /// * `0`: success

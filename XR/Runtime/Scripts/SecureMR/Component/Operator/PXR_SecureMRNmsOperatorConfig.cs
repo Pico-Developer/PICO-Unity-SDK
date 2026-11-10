@@ -7,7 +7,7 @@ namespace ByteDance.PICO.SecureMR
 {
     public class PXR_SecureMRNmsOperatorConfig : PXR_SecureMROperatorConfig
     {
-        public float threshold;
+        public float threshold = 0.95f;
     }
 }
 #endif

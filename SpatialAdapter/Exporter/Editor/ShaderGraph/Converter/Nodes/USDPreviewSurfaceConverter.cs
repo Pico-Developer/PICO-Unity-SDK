@@ -134,89 +134,89 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
             SurfaceType surfaceType = SurfaceType.Opaque;
             AlphaMode alphaMode = AlphaMode.Alpha;
             MaterialType materialType = MaterialType.Lit;
+            string subTargetName = "Lit";
             foreach (var target in graphData.activeTargets)
             {
-                string subTargetName = "Lit";
                 if (target is BuiltInTarget)
                 {
                     var builtInTarget = target as BuiltInTarget;
                     surfaceType = builtInTarget.surfaceType;
                     alphaMode = builtInTarget.alphaMode;
                     alphaClipEnabled = builtInTarget.alphaClip;
-                    subTargetName = builtInTarget.activeSubTarget.displayName;
-                }
-                else
-                {
-                    var targetType = target.GetType();
-                    
-                    // Need to use reflection for URP target since the type is not accessible
-                    if (targetType.FullName == "UnityEditor.Rendering.Universal.ShaderGraph.UniversalTarget")
-                    {
-                        surfaceType = (SurfaceType) (targetType.GetProperty("surfaceType").GetValue(target));
-                        alphaMode = (AlphaMode)(targetType.GetProperty("alphaMode").GetValue(target));
-                        alphaClipEnabled = (bool)targetType.GetProperty("alphaClip").GetValue(target);
-                        var subTarget = (SubTarget)targetType.GetProperty("activeSubTarget").GetValue(target);
-                        subTargetName = subTarget.displayName;
-                    } else
-                    {
-                        Debug.LogWarning($"Unsupported target type {targetType} on shader graph {graphData.path}");
-                    }
+                    subTargetName = builtInTarget.activeSubTarget?.displayName ?? "Lit";
+                    break;
                 }
 
-                switch (subTargetName)
-                {
-                    case "Lit":
-                        materialType = MaterialType.Lit;
-                        break;
-                    case "Unlit":
-                        materialType = MaterialType.UnLit;
-                        break;
-                    default:
-                        Debug.LogWarning($"Unsupported sub target: {subTargetName} on shader graph {graphData.path}");
-                        break;
-                }
+                var targetType = target.GetType();
                 
-                var fragmentNodeType = materialType == MaterialType.UnLit ? MaterialXNodeType.PicoUnlit : MaterialXNodeType.PicoPbr;
-
-                // setup the surface shader node.
-                MaterialXDataType vertexShaderDataType = MaterialXDataType.Vertex;
-                MaterialXDataType fragmentShaderDataType = MaterialXDataType.Surface;
-                var fragmentNodeName = "SR_" + materialXGraphData.Name;
-                var vertexNodeName = fragmentNodeName + "_Vertex";
-                var materialNodeName = "USD_" + materialXGraphData.Name;
-                var vertexNode = materialXGraphData.AddNode(vertexNodeName, MaterialXNodeType.GeometryModification, vertexShaderDataType);
-                var fragmentNode = materialXGraphData.AddNode(fragmentNodeName, fragmentNodeType, fragmentShaderDataType);
-
-                // disable tone mapping for unlit surface
-                if (fragmentNodeType == MaterialXNodeType.PicoUnlit)
+                // Need to use reflection for URP target since the type is not accessible
+                if (targetType.FullName == "UnityEditor.Rendering.Universal.ShaderGraph.UniversalTarget")
                 {
-                    fragmentNode.AddPortWithValue("applyPostProcessToneMap", MaterialXDataType.Boolean,  false);
+                    surfaceType = (SurfaceType)targetType.GetProperty("surfaceType").GetValue(target);
+                    alphaMode = (AlphaMode)targetType.GetProperty("alphaMode").GetValue(target);
+                    alphaClipEnabled = (bool)targetType.GetProperty("alphaClip").GetValue(target);
+                    var subTarget = (SubTarget)targetType.GetProperty("activeSubTarget").GetValue(target);
+                    subTargetName = subTarget?.displayName ?? "Lit";
+                    break;
                 }
-                
-                // Account for alpha modes using premultiplied alpha
-                if (fragmentNodeType != MaterialXNodeType.USDPreviewSurface && (alphaMode == AlphaMode.Premultiply || alphaMode == AlphaMode.Additive))
-                    fragmentNode.AddPortWithValue("hasPremultipliedAlpha", MaterialXDataType.Boolean, true);
 
-                materialXGraphData.AddNode(materialNodeName, MaterialXNodeType.Material, MaterialXDataType.Material);
-                
-                materialXGraphData.AddPortAndEdge(vertexNodeName, materialNodeName, MaterialXDataType.Vertex.ToTypeString(), MaterialXDataType.Vertex);
-                materialXGraphData.AddPortAndEdge(fragmentNodeName, materialNodeName, MaterialXDataType.Surface.ToTypeString(), MaterialXDataType.Surface);
+                Debug.LogWarning($"Unsupported target type {targetType} on shader graph {graphData.path}");
+            }
 
-                var blocks = graphData.GetNodes<BlockNode>();
+            switch (subTargetName)
+            {
+                case "Lit":
+                    materialType = MaterialType.Lit;
+                    break;
+                case "Unlit":
+                    materialType = MaterialType.UnLit;
+                    break;
+                default:
+                    Debug.LogWarning($"Unsupported sub target: {subTargetName} on shader graph {graphData.path}");
+                    break;
+            }
+            
+            var fragmentNodeType = materialType == MaterialType.UnLit ? MaterialXNodeType.PicoUnlit : MaterialXNodeType.PicoPbr;
 
-                foreach (var block in blocks)
+            // setup the surface shader node.
+            MaterialXDataType vertexShaderDataType = MaterialXDataType.Vertex;
+            MaterialXDataType fragmentShaderDataType = MaterialXDataType.Surface;
+            var fragmentNodeName = "SR_" + materialXGraphData.Name;
+            var vertexNodeName = fragmentNodeName + "_Vertex";
+            var materialNodeName = "USD_" + materialXGraphData.Name;
+            var vertexNode = materialXGraphData.AddNode(vertexNodeName, MaterialXNodeType.GeometryModification, vertexShaderDataType);
+            var fragmentNode = materialXGraphData.AddNode(fragmentNodeName, fragmentNodeType, fragmentShaderDataType);
+
+            // disable tone mapping for unlit surface
+            if (fragmentNodeType == MaterialXNodeType.PicoUnlit)
+            {
+                fragmentNode.AddPortWithValue("applyPostProcessToneMap", MaterialXDataType.Boolean,  false);
+            }
+            
+            // Account for alpha modes using premultiplied alpha
+            if (fragmentNodeType != MaterialXNodeType.USDPreviewSurface && (alphaMode == AlphaMode.Premultiply || alphaMode == AlphaMode.Additive))
+                fragmentNode.AddPortWithValue("hasPremultipliedAlpha", MaterialXDataType.Boolean, true);
+
+            materialXGraphData.AddNode(materialNodeName, MaterialXNodeType.Material, MaterialXDataType.Material);
+            
+            materialXGraphData.AddPortAndEdge(vertexNodeName, materialNodeName, MaterialXDataType.Vertex.ToTypeString(), MaterialXDataType.Vertex);
+            materialXGraphData.AddPortAndEdge(fragmentNodeName, materialNodeName, MaterialXDataType.Surface.ToTypeString(), MaterialXDataType.Surface);
+
+            var blocks = graphData.GetNodes<BlockNode>();
+
+            foreach (var block in blocks)
+            {
+                if (!BlockMap.ContainsKey(block.descriptor.name))
+                    continue;
+
+                var shaderNode = block.descriptor.shaderStage switch
                 {
-                    if (!BlockMap.ContainsKey(block.descriptor.name))
-                        continue;
-
-                    var shaderNode = block.descriptor.shaderStage switch
-                    {
-                        ShaderStage.Fragment => fragmentNode,
-                        ShaderStage.Vertex => vertexNode,
-                        _ => throw new NotSupportedException($"Unsupported shader stage {block.descriptor.shaderStage}")
-                    };
-                    if (shaderNode == null)
-                        continue; // Ignore vertex stage if unsupported.
+                    ShaderStage.Fragment => fragmentNode,
+                    ShaderStage.Vertex => vertexNode,
+                    _ => throw new NotSupportedException($"Unsupported shader stage {block.descriptor.shaderStage}")
+                };
+                if (shaderNode == null)
+                    continue; // Ignore vertex stage if unsupported.
 
                     var currentSlot = block.FindInputSlot<MaterialSlot>(0);
                     var srcSlot = ShaderGraphUtil.SlotUtil.GetOutputSlot(currentSlot);
@@ -386,26 +386,25 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                     {
                         externalNode.AddPortWithValue(externalPortName, portType, floatValue);
                     }
-                }
+            }
 
-                // resolve surface inputs without default connection with a default value
-                var surfaceInputs = materialType == MaterialType.UnLit ? _unlitSurfaceInputs : _litSurfaceInputs;
-                foreach (var defaultPorts in surfaceInputs.Values)
+            // resolve surface inputs without default connection with a default value
+            var surfaceInputs = materialType == MaterialType.UnLit ? _unlitSurfaceInputs : _litSurfaceInputs;
+            foreach (var defaultPorts in surfaceInputs.Values)
+            {
+                if (!fragmentNode.HasPort(defaultPorts.Name))
                 {
-                    if (!fragmentNode.HasPort(defaultPorts.Name))
+                    // if alpha clip is disabled, skip opacity threshold port
+                    // if alpha clip is disabled and material is not transparent, skip opacity port
+                    if (defaultPorts.Name == "opacityThreshold" && !alphaClipEnabled)
                     {
-                        // if alpha clip is disabled, skip opacity threshold port
-                        // if alpha clip is disabled and material is not transparent, skip opacity port
-                        if (defaultPorts.Name == "opacityThreshold" && !alphaClipEnabled)
-                        {
-                            continue;
-                        }
-                        
-                        if (defaultPorts.Name == "opacity" && !(surfaceType == SurfaceType.Transparent || alphaClipEnabled))
-                            continue;
-    
-                        fragmentNode.AddPortWithValue(defaultPorts.Name, defaultPorts.DataType, defaultPorts.Value);
+                        continue;
                     }
+                    
+                    if (defaultPorts.Name == "opacity" && !(surfaceType == SurfaceType.Transparent || alphaClipEnabled))
+                        continue;
+
+                    fragmentNode.AddPortWithValue(defaultPorts.Name, defaultPorts.DataType, defaultPorts.Value);
                 }
             }
         }

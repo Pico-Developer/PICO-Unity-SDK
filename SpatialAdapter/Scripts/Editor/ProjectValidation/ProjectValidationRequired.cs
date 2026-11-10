@@ -11,11 +11,13 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using Unity.XR.CoreUtils;
 
 static class ProjectValidationRequired
 {
     const string k_Catergory = "SpatialAdapter";
+    const string k_RawImagePlaceholderTexturePath = "Assets/SpatialAdapter/Generated/RawImageWhitePlaceholder.png";
 
     [InitializeOnLoadMethod]
     static void AddRequiredRules()
@@ -170,6 +172,20 @@ static class ProjectValidationRequired
                             }
                         }
                     },
+                    Error = true
+                },
+
+                new BuildValidationRule
+                {
+                    Category = k_Catergory,
+                    Message = "RawImage components must have a texture assigned.",
+                    IsRuleEnabled = IsSpatialAdapterEnabled,
+                    CheckPredicate = () =>
+                    {
+                        return !FindComponentsInScene<RawImage>().Any(rawImage => rawImage != null && rawImage.texture == null);
+                    },
+                    FixItMessage = "Create a small white placeholder texture and assign it to RawImage components that have no texture.",
+                    FixIt = AssignWhitePlaceholderTextureToEmptyRawImages,
                     Error = true
                 },
 
@@ -349,6 +365,81 @@ static class ProjectValidationRequired
         {
             Debug.LogError($"SpatialAdapter Validation: Failed to invoke Setup Project. {ex}");
         }
+    }
+
+    static void AssignWhitePlaceholderTextureToEmptyRawImages()
+    {
+        var placeholderTexture = GetOrCreateRawImageWhitePlaceholderTexture();
+        if (placeholderTexture == null)
+        {
+            Debug.LogError("SpatialAdapter Validation: Failed to create RawImage white placeholder texture.");
+            return;
+        }
+
+        var activeScene = SceneManager.GetActiveScene();
+        var anyChanges = false;
+
+        foreach (var rawImage in FindComponentsInScene<RawImage>())
+        {
+            if (rawImage == null || rawImage.texture != null)
+            {
+                continue;
+            }
+
+            Undo.RecordObject(rawImage, "Assign RawImage placeholder texture");
+            rawImage.texture = placeholderTexture;
+            EditorUtility.SetDirty(rawImage);
+            anyChanges = true;
+        }
+
+        if (anyChanges)
+        {
+            EditorSceneManager.MarkSceneDirty(activeScene);
+        }
+    }
+
+    static Texture2D GetOrCreateRawImageWhitePlaceholderTexture()
+    {
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(k_RawImagePlaceholderTexturePath);
+        if (texture != null)
+        {
+            return texture;
+        }
+
+        var directory = Path.GetDirectoryName(k_RawImagePlaceholderTexturePath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+        {
+            name = "RawImageWhitePlaceholder"
+        };
+        texture.SetPixels(new[]
+        {
+            Color.white,
+            Color.white,
+            Color.white,
+            Color.white
+        });
+        texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+
+        File.WriteAllBytes(k_RawImagePlaceholderTexturePath, texture.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(texture);
+        AssetDatabase.ImportAsset(k_RawImagePlaceholderTexturePath);
+
+        var importer = AssetImporter.GetAtPath(k_RawImagePlaceholderTexturePath) as TextureImporter;
+        if (importer != null)
+        {
+            importer.textureType = TextureImporterType.Default;
+            importer.alphaSource = TextureImporterAlphaSource.FromInput;
+            importer.mipmapEnabled = false;
+            importer.isReadable = true;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(k_RawImagePlaceholderTexturePath);
     }
 
     public static List<T> FindComponentsInScene<T>() where T : Component

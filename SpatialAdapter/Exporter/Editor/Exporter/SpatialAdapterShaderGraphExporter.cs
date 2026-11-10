@@ -39,7 +39,14 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
                 return true;
             }
 
-            ShaderGraphExporter.ExportShaderGraph(assetPath, exportedPath, AssetExportHelpers.GetExportDirectory());
+            if (!ShaderGraphExporter.ExportShaderGraph(
+                    assetPath,
+                    exportedPath,
+                    AssetExportHelpers.GetExportDirectory(),
+                    out string failureMessage))
+            {
+                Debug.LogWarning(failureMessage);
+            }
             
             return true;
         }

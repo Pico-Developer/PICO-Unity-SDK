@@ -65,8 +65,12 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor
 								new GUIContent("Disabled Features"));
 							EditorGUILayout.PropertyField(runtimeSettings.FindProperty("m_disableUnlitTonemapping"),
 								new GUIContent("Disable Unlit Material Tonemapping"));
+							EditorGUILayout.PropertyField(runtimeSettings.FindProperty("m_globalImageBasedLightingScale"),
+								new GUIContent("Global Image Based Lighting Scale"));
 							EditorGUILayout.PropertyField(runtimeSettings.FindProperty("m_autoAddUIHoverEffect"),
 								new GUIContent("Auto Add UI Hover Effect"));
+							EditorGUILayout.PropertyField(runtimeSettings.FindProperty("m_enableDynamicLights"),
+								new GUIContent("Enable Dynamic Lights"));
 						}
 
 						EditorGUILayout.Space();

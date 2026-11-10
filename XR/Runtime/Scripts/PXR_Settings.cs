@@ -12,6 +12,8 @@ PICO Technology Co., Ltd.
 
 using System;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 using UnityEngine.XR.Management;
 #if UNITY_EDITOR
 using System.IO;
@@ -20,9 +22,16 @@ using UnityEditor;
 
 namespace ByteDance.PICO.XR
 {
+    public enum PxrReprojectionMode : ushort
+    {
+        None = 0,
+        PTW = 1,
+        AppSW = 2
+    }
+
     [Serializable]
     [XRConfigurationData("PICO", "ByteDance.PICO.XR.Settings")]
-    public class PXR_Settings : ScriptableObject
+    public class PXR_Settings : ScriptableObject, ISerializationCallbackReceiver
     {
         public enum AppMode
         {
@@ -57,8 +66,28 @@ namespace ByteDance.PICO.XR
         [SerializeField, Tooltip("if enabled,will always discarding depth and resolving MSAA color to improve performance on tile-based architectures. This only affects Vulkan. Note that this may break user content")]
         public bool optimizeBufferDiscards = true;
         
-        [SerializeField, Tooltip("Enable Application SpaceWarp")]
-        public bool enableAppSpaceWarp;
+        [SerializeField, Tooltip("Select the reprojection mode")]
+        public PxrReprojectionMode reprojectionMode;
+
+        [SerializeField, HideInInspector, FormerlySerializedAs("enableAppSpaceWarp")]
+        private bool legacyEnableAppSpaceWarp;
+
+        [Obsolete("Use reprojectionMode instead.")]
+        public bool enableAppSpaceWarp
+        {
+            get => reprojectionMode == PxrReprojectionMode.AppSW;
+            set
+            {
+                if (value)
+                {
+                    reprojectionMode = PxrReprojectionMode.AppSW;
+                }
+                else if (reprojectionMode == PxrReprojectionMode.AppSW)
+                {
+                    reprojectionMode = PxrReprojectionMode.None;
+                }
+            }
+        }
 
         [SerializeField, Tooltip("Set the system splash screen picture in PNG format. [width,height] < [1024, 1024]")]
         public Texture2D systemSplashScreen;
@@ -78,6 +107,45 @@ namespace ByteDance.PICO.XR
         public ushort GetOptimizeBufferDiscards()
         {
             return optimizeBufferDiscards ? (ushort)1 : (ushort)0;
+        }
+
+        public ushort GetEffectiveOptimizeBufferDiscards()
+        {
+            return reprojectionMode == PxrReprojectionMode.PTW
+                ? (ushort)0
+                : GetOptimizeBufferDiscards();
+        }
+
+        public static bool IsAppSpaceWarpGraphicsApiSupported(GraphicsDeviceType[] graphicsApis)
+        {
+            if (graphicsApis == null || graphicsApis.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (GraphicsDeviceType graphicsApi in graphicsApis)
+            {
+                if (graphicsApi != GraphicsDeviceType.Vulkan)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public void OnBeforeSerialize()
+        {
+        }
+
+        public void OnAfterDeserialize()
+        {
+            if (legacyEnableAppSpaceWarp && reprojectionMode == PxrReprojectionMode.None)
+            {
+                reprojectionMode = PxrReprojectionMode.AppSW;
+            }
+
+            legacyEnableAppSpaceWarp = false;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR

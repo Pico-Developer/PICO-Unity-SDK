@@ -283,7 +283,11 @@ namespace ByteDance.PICO.XR
                     case PxrSemanticLabel.Chair:
                         return PlaneClassification.Seat;
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(label), label, null);
+                        // Forward compatibility: labels added by newer
+                        // algorithm/runtime are unknown to this SDK version. Map them to Other
+                        // instead of throwing, otherwise plane updates abort and block the
+                        // whole rendering session (passthrough never starts).
+                        return PlaneClassification.Other;
                 }
             }
 #endif
@@ -327,7 +331,11 @@ namespace ByteDance.PICO.XR
                     case PxrSemanticLabel.WallArt:
                         return PlaneClassifications.WallArt;
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(label), label, null);
+                        // Forward compatibility: labels added by newer
+                        // algorithm/runtime are unknown to this SDK version. Map them to Other
+                        // instead of throwing, otherwise plane updates abort and block the
+                        // whole rendering session (passthrough never starts).
+                        return PlaneClassifications.Other;
                 }
             }
 #endif
@@ -345,7 +353,9 @@ namespace ByteDance.PICO.XR
                     case PxrPlaneOrientation.Arbitrary:
                         return PlaneAlignment.NotAxisAligned;
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(orientationMode), orientationMode, null);
+                        // Forward compatibility: unknown orientation values from newer
+                        // algorithm/runtime map to NotAxisAligned instead of throwing.
+                        return PlaneAlignment.NotAxisAligned;
                 }
             }
             
@@ -378,3 +388,4 @@ namespace ByteDance.PICO.XR
 }
 #endif
 #endif
+

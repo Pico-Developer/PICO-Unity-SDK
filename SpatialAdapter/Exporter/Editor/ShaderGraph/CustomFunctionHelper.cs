@@ -235,22 +235,26 @@ internal class NodeDef : AbstractNodeDef
     {
         if (!context.NodeData.TryGetValue(key, out var nodeDatum))
         {
-            nodeDatum = context.MaterialXGraphData.AddNode(ShaderGraphUtil.NodeUtil.GetNodeName(context.Node, $"{context.Context}_{key}"), NodeType, OutputType);
-            nodeDatum.OutputName = OutputName;
+            string nodeName = ShaderGraphUtil.NodeUtil.GetNodeName(context.Node, $"{context.Context}_{key}");
+            bool createdNode = context.MaterialXGraphData.GetOrAddNode(nodeName, NodeType, OutputType, out nodeDatum);
             context.NodeData.Add(key, nodeDatum);
 
-
-            var outputSlot = ShaderGraphUtil.SlotUtil.GetSlotByName(context.Node, key);
-            if (outputSlot != null)
+            if (createdNode)
             {
-                outputSlot = ShaderGraphUtil.SlotUtil.GetOutputSlot(outputSlot);
+                nodeDatum.OutputName = OutputName;
+
+                var outputSlot = ShaderGraphUtil.SlotUtil.GetSlotByName(context.Node, key);
                 if (outputSlot != null)
-                    context.StagingEdges.AddPort(outputSlot.slotReference, nodeDatum.Name);
-            }
+                {
+                    outputSlot = ShaderGraphUtil.SlotUtil.GetOutputSlot(outputSlot);
+                    if (outputSlot != null)
+                        context.StagingEdges.AddPort(outputSlot.slotReference, nodeDatum.Name);
+                }
 
-            foreach (var (inputName, inputDef) in Inputs)
-            {
-                inputDef.AddPortsAndEdges(context, nodeDatum, key, inputName);
+                foreach (var (inputName, inputDef) in Inputs)
+                {
+                    inputDef.AddPortsAndEdges(context, nodeDatum, key, inputName);
+                }
             }
         }
         return nodeDatum;

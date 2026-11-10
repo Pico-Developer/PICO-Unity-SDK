@@ -319,7 +319,11 @@ namespace ByteDance.PICO.SpatialAdapter.Exporter.Editor.ShaderGraph
                 try
                 {
                     var texture2DSlot = (Texture2DInputMaterialSlot)slot;
-                    return ConverterUtil.GetExportedTextureReferencePath(texture2DSlot.owner.owner.path, texture2DSlot.texture);
+                    string graphAssetPath = AssetDatabase.GUIDToAssetPath(texture2DSlot.owner?.owner?.assetGuid);
+                    if (string.IsNullOrEmpty(graphAssetPath))
+                        graphAssetPath = texture2DSlot.owner.owner.path;
+
+                    return ConverterUtil.GetExportedTextureReferencePath(graphAssetPath, texture2DSlot.texture);
                 }
                 catch
                 {

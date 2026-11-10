@@ -576,7 +576,8 @@ namespace ByteDance.PICO.IconConfigurator.Editor
                 appId,
                 deviceId,
                 signature,
-                onProgress);
+                onProgress,
+                out string requestTransport);
             onProgress?.Invoke(0.3f);
             AiSplitGenerateResponseDto generateResponse = PostJson<AiSplitGenerateResponseDto>(
                 loadResult,
@@ -593,15 +594,36 @@ namespace ByteDance.PICO.IconConfigurator.Editor
                 throw new InvalidOperationException("AI Split service returned an empty task id.");
             }
 
+            Debug.Log("[IconConfigurator] AI Split task started; polling result. task_id="
+                + taskId + ", transport=" + requestTransport);
+
             DateTime startedAt = m_clock.UtcNow;
             int processingPollCount = 0;
+            int lastReportedProgress = 0;
+            int lastLoggedProgress = -1;
+            string lastInfoRequestId = string.Empty;
+            int totalTimeoutSeconds = loadResult.Config.Timeouts.TotalTimeoutSeconds;
             while (true)
             {
                 ThrowIfCancelled();
+                TimeSpan elapsed = m_clock.UtcNow - startedAt;
+                if (processingPollCount > 0
+                    && elapsed >= TimeSpan.FromSeconds(totalTimeoutSeconds))
+                {
+                    throw new TimeoutException(CreateTimeoutError(
+                        taskId,
+                        elapsed,
+                        totalTimeoutSeconds,
+                        lastReportedProgress,
+                        processingPollCount,
+                        lastInfoRequestId));
+                }
+
                 AiSplitInfoResponseDto infoResponse = PostJson<AiSplitInfoResponseDto>(
                     loadResult,
                     loadResult.Config.Api.InfoPath,
                     CreateInfoBody(appId, deviceId, signature, taskId));
+                lastInfoRequestId = FirstNonEmpty(infoResponse.request_id, lastInfoRequestId);
 
                 if (infoResponse.code == 0)
                 {
@@ -616,12 +638,31 @@ namespace ByteDance.PICO.IconConfigurator.Editor
                 }
 
                 processingPollCount++;
-                onProgress?.Invoke(GetProcessingProgress(infoResponse.data?.progress ?? 0, processingPollCount));
+                lastReportedProgress = infoResponse.data?.progress ?? lastReportedProgress;
+                elapsed = m_clock.UtcNow - startedAt;
+                if (ShouldLogProcessingStatus(lastReportedProgress, lastLoggedProgress, processingPollCount))
+                {
+                    Debug.Log(CreateProcessingLog(
+                        taskId,
+                        elapsed,
+                        totalTimeoutSeconds,
+                        lastReportedProgress,
+                        processingPollCount));
+                    lastLoggedProgress = lastReportedProgress;
+                }
+
+                onProgress?.Invoke(GetProcessingProgress(lastReportedProgress, processingPollCount));
                 ThrowIfCancelled();
 
-                if (m_clock.UtcNow - startedAt >= TimeSpan.FromSeconds(loadResult.Config.Timeouts.TotalTimeoutSeconds))
+                if (elapsed >= TimeSpan.FromSeconds(totalTimeoutSeconds))
                 {
-                    throw new TimeoutException("AI Split generation timed out.");
+                    throw new TimeoutException(CreateTimeoutError(
+                        taskId,
+                        elapsed,
+                        totalTimeoutSeconds,
+                        lastReportedProgress,
+                        processingPollCount,
+                        lastInfoRequestId));
                 }
 
                 m_delay.Delay(TimeSpan.FromSeconds(Math.Max(0, loadResult.Config.Timeouts.PollIntervalSeconds)));
@@ -704,7 +745,8 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             string appId,
             string deviceId,
             string signature,
-            Action<float> onProgress)
+            Action<float> onProgress,
+            out string requestTransport)
         {
             if (HasUsableTosConfig(loadResult.Config.Tos))
             {
@@ -713,16 +755,19 @@ namespace ByteDance.PICO.IconConfigurator.Editor
                     preparedImage.FileName,
                     preparedImage.PngBytes);
                 onProgress?.Invoke(0.15f);
+                requestTransport = "ImageUrl";
                 return CreateGenerateBodyWithImageUrl(appId, deviceId, signature, uploadResult.PublicUrl);
             }
 
             if (TryUploadViaService(loadResult, preparedImage, appId, deviceId, signature, out string uploadedImageUrl))
             {
                 onProgress?.Invoke(0.15f);
+                requestTransport = "ImageUrl";
                 return CreateGenerateBodyWithImageUrl(appId, deviceId, signature, uploadedImageUrl);
             }
 
             onProgress?.Invoke(0.15f);
+            requestTransport = "Base64";
             return CreateGenerateBodyWithImageBase64(
                 appId,
                 deviceId,
@@ -770,7 +815,8 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             }
             catch (InvalidOperationException exception)
             {
-                Debug.LogWarning($"[IconConfigurator] AI Split upload failed, falling back to Base64: {exception.Message}");
+                Debug.Log("[IconConfigurator] AI Split upload endpoint is unavailable; continuing with Base64 generation request. Upload error: "
+                    + exception.Message);
                 return false;
             }
         }
@@ -962,6 +1008,62 @@ namespace ByteDance.PICO.IconConfigurator.Editor
             }
 
             return Mathf.Clamp(processingPollCount * 0.05f, 0.05f, 0.95f);
+        }
+
+        private static bool ShouldLogProcessingStatus(
+            int reportedProgress,
+            int lastLoggedProgress,
+            int processingPollCount)
+        {
+            return processingPollCount == 1
+                || (reportedProgress > 0 && reportedProgress != lastLoggedProgress)
+                || processingPollCount % 10 == 0;
+        }
+
+        private static string CreateProcessingLog(
+            string taskId,
+            TimeSpan elapsed,
+            int timeoutSeconds,
+            int lastReportedProgress,
+            int processingPollCount)
+        {
+            return "[IconConfigurator] AI Split processing; task_id="
+                + (string.IsNullOrWhiteSpace(taskId) ? "unknown" : taskId)
+                + ", progress=" + FormatProgressText(lastReportedProgress)
+                + ", polls=" + processingPollCount
+                + ", elapsed=" + FormatElapsedSeconds(elapsed) + "s/" + timeoutSeconds + "s";
+        }
+
+        private static string CreateTimeoutError(
+            string taskId,
+            TimeSpan elapsed,
+            int timeoutSeconds,
+            int lastReportedProgress,
+            int processingPollCount,
+            string lastInfoRequestId)
+        {
+            string message = "AI Split generation timed out after " + FormatElapsedSeconds(elapsed)
+                + "s (timeout limit " + timeoutSeconds
+                + "s, task_id=" + (string.IsNullOrWhiteSpace(taskId) ? "unknown" : taskId)
+                + ", last_progress=" + FormatProgressText(lastReportedProgress)
+                + ", polls=" + processingPollCount;
+
+            if (!string.IsNullOrWhiteSpace(lastInfoRequestId))
+            {
+                message += ", last_request_id=" + lastInfoRequestId;
+            }
+
+            return message + ").";
+        }
+
+        private static int FormatElapsedSeconds(TimeSpan elapsed)
+        {
+            return Math.Max(0, (int)Math.Ceiling(elapsed.TotalSeconds));
+        }
+
+        private static string FormatProgressText(int progress)
+        {
+            return progress > 0 ? progress + "%" : "unknown";
         }
 
         private static string GetLayerFileName(int layerIndex)
